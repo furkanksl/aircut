@@ -1,0 +1,13 @@
+fastapi==0.110.3
+uvicorn==0.34.2
+python-dotenv==1.0.1
+opencv-python==4.10.0.84
+numpy==2.2.6
+websockets==15.0.1
+requests==2.32.3
+python-multipart==0.0.20
+scipy==1.15.3
+pydantic==2.11.5
+python-jose==3.4.0
+Pillow==11.2.1
+inference==0.50.0
