@@ -749,8 +749,8 @@ function AppContent() {
           );
         }
       },
-      isWindowVisible ? 10000 : 20
-    ); // More frequent pings when hidden (1 second instead of 10)
+      isWindowVisible ? 10000 : 10
+    ); // More frequent pings when hidden (10ms instead of 10 seconds)
   };
 
   return (
