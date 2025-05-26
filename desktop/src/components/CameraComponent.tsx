@@ -9,14 +9,18 @@ import {
   Target,
   Circle,
   InfoIcon,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { frameStreamService } from "@/services/frameStreamService";
+import { toast } from "sonner";
 
 interface CameraComponentProps {
   isConnected: boolean;
   isTracking: boolean;
   trajectory: Array<{ x: number; y: number }>;
   onTrajectoryUpdate?: (point: { x: number; y: number }) => void;
+  onReconnect?: () => void;
   lastGestureResult?: {
     name: string;
     command: string;
@@ -33,6 +37,7 @@ export function CameraComponent({
   isConnected,
   isTracking,
   trajectory,
+  onReconnect,
   lastGestureResult = null,
   showGestureResult = true,
   className = "",
@@ -47,6 +52,8 @@ export function CameraComponent({
   const [localDetection, setLocalDetection] = useState<any>(null);
   const [performanceStats, setPerformanceStats] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
   // Camera management
   useEffect(() => {
@@ -92,6 +99,44 @@ export function CameraComponent({
 
   const handleConnectionStatus = (status: string) => {
     setStreamingStatus(status);
+    if (status === "connected") {
+      setIsReconnecting(false);
+      setReconnectAttempts(0);
+    }
+  };
+
+  const handleReconnect = async () => {
+    if (isReconnecting || isConnected) return;
+
+    setIsReconnecting(true);
+    setReconnectAttempts((prev) => prev + 1);
+
+    try {
+      toast.info(
+        `Attempting to reconnect... (Attempt ${reconnectAttempts + 1})`
+      );
+
+      // Call the parent component's reconnect function
+      if (onReconnect) {
+        await onReconnect();
+      }
+
+      // Wait a bit and check if connection was successful
+      setTimeout(() => {
+        if (!isConnected) {
+          setIsReconnecting(false);
+          toast.error("Reconnection failed. Please try again.");
+        } else {
+          toast.success("Successfully reconnected to backend!");
+        }
+      }, 3000);
+    } catch (error) {
+      console.error("Reconnect failed:", error);
+      setIsReconnecting(false);
+      toast.error(
+        "Reconnection failed. Please check if the backend is running."
+      );
+    }
   };
 
   const startStream = async () => {
@@ -415,17 +460,47 @@ export function CameraComponent({
               />
             </div>
             <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Camera Disconnected
+              Disconnected
             </h3>
             <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-xs">
               Connect to the backend server to start the camera feed
             </p>
-            <div className="flex items-center justify-center space-x-2">
+
+            {/* Connection Status */}
+            <div className="flex items-center justify-center space-x-2 mb-6">
               <WifiOff className="w-4 h-4 text-red-500" strokeWidth={1.5} />
               <span className="text-sm text-red-500 font-medium">
                 Backend Offline
               </span>
             </div>
+
+            {/* Reconnect Attempts Counter */}
+            {reconnectAttempts > 0 && (
+              <p className="text-xs text-gray-400 mb-4">
+                Attempt {reconnectAttempts}
+              </p>
+            )}
+
+            {/* Reconnect Button */}
+            <Button
+              onClick={handleReconnect}
+              disabled={isReconnecting || isConnected}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {isReconnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Reconnecting...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-4 h-4" />
+                  Reconnect
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
