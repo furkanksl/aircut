@@ -24,6 +24,7 @@ interface VideoFeedProps {
   onClearTrajectory?: () => void;
   onRecognizeGesture?: (trajectory: Array<{ x: number; y: number }>) => void;
   onLoadTemplates?: () => void;
+  onReconnect?: () => void;
   isActive: boolean;
 }
 
@@ -35,6 +36,7 @@ export function VideoFeed({
   lastGestureResult = null,
   onClearTrajectory,
   onRecognizeGesture,
+  onReconnect,
   isActive,
 }: VideoFeedProps) {
   return (
@@ -65,6 +67,7 @@ export function VideoFeed({
           isConnected={isConnected && isActive}
           isTracking={isTracking}
           trajectory={trajectory}
+          onReconnect={onReconnect}
           lastGestureResult={lastGestureResult}
           showGestureResult={false}
           showRecordingStatus={false}
