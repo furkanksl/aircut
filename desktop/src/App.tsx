@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { VideoFeed } from "@/components/VideoFeed";
 import { frameStreamService } from "@/services/frameStreamService";
 import { toast, Toaster } from "sonner";
 import { useAppStore } from "@/stores/appStore";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Hand,
   Play,
@@ -22,6 +23,7 @@ import {
   Sun,
   Moon,
   Settings,
+  Terminal,
 } from "lucide-react";
 
 function AppContent() {
@@ -66,6 +68,10 @@ function AppContent() {
     clearGesture,
     dismissLoadingToast,
   } = useAppStore();
+
+  // Local state for command execution
+  const [isExecutingCommand, setIsExecutingCommand] = useState(false);
+  const [executingCommand, setExecutingCommand] = useState<string>("");
 
   // WebSocket refs
   const frameSocketRef = useRef<WebSocket | null>(null);
@@ -332,6 +338,11 @@ function AppContent() {
               duration: 5000,
             }
           );
+
+          // Execute the command if it exists
+          if (message.command && message.command.trim() !== "") {
+            executeCommand(message.command);
+          }
           break;
 
         case "gesture_not_recognized":
@@ -487,6 +498,47 @@ function AppContent() {
       };
 
       frameSocketRef.current.send(JSON.stringify(updateMessage));
+    }
+  };
+
+  // Execute command function
+  const executeCommand = async (command: string) => {
+    if (!command || command.trim() === "") {
+      return;
+    }
+
+    try {
+      setIsExecutingCommand(true);
+      setExecutingCommand(command.trim());
+
+      console.log(`🚀 Executing command: ${command}`);
+      toast.info(`Executing: ${command}`, {
+        duration: 2000,
+        icon: <Terminal className="w-4 h-4" strokeWidth={1.5} />,
+      });
+
+      // Use Tauri's invoke to execute shell commands
+      // This requires a corresponding Tauri command in the Rust backend
+      const result = await invoke("execute_command", {
+        command: command.trim(),
+      });
+
+      toast.success(`✅ Command executed successfully`, {
+        duration: 3000,
+        description: typeof result === "string" ? result : undefined,
+      });
+    } catch (error) {
+      console.error("❌ Command execution failed:", error);
+      toast.error(`Failed to execute command`, {
+        duration: 4000,
+        description: typeof error === "string" ? error : String(error),
+      });
+    } finally {
+      // Clear execution state after a delay
+      setTimeout(() => {
+        setIsExecutingCommand(false);
+        setExecutingCommand("");
+      }, 2000);
     }
   };
 
@@ -769,60 +821,110 @@ function AppContent() {
               )}
 
               {/* Recognition Result - Top Left */}
-              {lastGestureResult && (
+              {(lastGestureResult || isExecutingCommand) && (
                 <div className="absolute -top-28 inset-x-20 z-10">
                   <div
                     className={`${panelClass} rounded-3xl py-2 px-4 shadow-2xl border border-white/20 min-w-[360px] transform transition-all duration-500 animate-in slide-in-from-top-2 fade-in-0`}
                   >
                     <div className="flex items-center space-x-3">
-                      {/* Success Indicator */}
+                      {/* Status Indicator */}
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
-                          <CheckCircle className="w-5 h-5 text-green-500" />
+                        <div
+                          className={`w-10 h-10 rounded-xl ${
+                            isExecutingCommand
+                              ? "bg-gradient-to-br from-blue-500/20 to-purple-500/20"
+                              : "bg-gradient-to-br from-green-500/20 to-emerald-500/20"
+                          } flex items-center justify-center`}
+                        >
+                          {isExecutingCommand ? (
+                            <Terminal className="w-5 h-5 text-blue-500 animate-pulse" />
+                          ) : (
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                          )}
                         </div>
-                        <div className="absolute -inset-1 bg-green-500/20 rounded-2xl animate-pulse" />
+                        <div
+                          className={`absolute -inset-1 ${
+                            isExecutingCommand
+                              ? "bg-blue-500/20 animate-pulse"
+                              : "bg-green-500/20 animate-pulse"
+                          } rounded-2xl`}
+                        />
                       </div>
 
-                      {/* Recognition Content */}
+                      {/* Content */}
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className={`${textClass} font-semibold text-sm`}>
-                            Gesture Recognized
+                            {isExecutingCommand
+                              ? "Executing Command"
+                              : "Gesture Recognized"}
                           </h4>
                         </div>
 
-                        {/* Recognition Details */}
+                        {/* Details */}
                         <div className="space-y-1">
-                          <div className="flex flex-row items-center justify-start gap-x-1">
-                            <span
-                              className={`${textClass} text-xs font-medium`}
-                            >
-                              {lastGestureResult.name}
-                            </span>
-                            <span className="text-xs font-medium">
-                              with{" "}
-                              <span className="text-green-600 dark:text-green-400 text-xs font-medium">
-                                {(lastGestureResult.similarity * 100).toFixed(
-                                  1
-                                )}
-                                %{" "}
+                          {isExecutingCommand ? (
+                            <div className="flex flex-row items-center justify-start gap-x-1">
+                              <span
+                                className={`${textClass} text-xs font-medium`}
+                              >
+                                {executingCommand}
                               </span>
-                              confidence
-                            </span>
-                          </div>
-
-                          {lastGestureResult.command && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-blue-600 dark:text-blue-400 text-xs font-medium">
-                                {lastGestureResult.command}
-                              </span>
+                              <div className="flex items-center space-x-1">
+                                <div
+                                  className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <div
+                                  className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <div
+                                  className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
+                                  style={{ animationDelay: "300ms" }}
+                                />
+                              </div>
                             </div>
-                          )}
+                          ) : lastGestureResult ? (
+                            <>
+                              <div className="flex flex-row items-center justify-start gap-x-1">
+                                <span
+                                  className={`${textClass} text-xs font-medium`}
+                                >
+                                  {lastGestureResult.name}
+                                </span>
+                                <span className="text-xs font-medium">
+                                  with{" "}
+                                  <span className="text-green-600 dark:text-green-400 text-xs font-medium">
+                                    {(
+                                      lastGestureResult.similarity * 100
+                                    ).toFixed(1)}
+                                    %{" "}
+                                  </span>
+                                  confidence
+                                </span>
+                              </div>
+
+                              {lastGestureResult.command && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-blue-600 dark:text-blue-400 text-xs font-medium">
+                                    {lastGestureResult.command}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : null}
                         </div>
                       </div>
 
-                      {/* Auto-dismiss timer */}
-                      <div className="w-1 rounded-full h-8 bg-gradient-to-b from-green-500/40 via-green-500 to-green-500/40" />
+                      {/* Status Bar */}
+                      <div
+                        className={`w-1 rounded-full h-8 ${
+                          isExecutingCommand
+                            ? "bg-gradient-to-b from-blue-500/40 via-blue-500 to-blue-500/40"
+                            : "bg-gradient-to-b from-green-500/40 via-green-500 to-green-500/40"
+                        }`}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1090,7 +1192,7 @@ function AppContent() {
                     Command <span className="text-gray-400">(Optional)</span>
                   </Label>
                   <Input
-                    placeholder="e.g., open browser"
+                    placeholder="e.g., open /Applications/Spotify.app"
                     value={templateCommand}
                     onChange={(e) => setTemplateCommand(e.target.value)}
                     className="h-10 bg-gray-50/80 border-gray-200 text-gray-900 placeholder:text-gray-500 dark:bg-white/5 dark:border-white/20 dark:text-white dark:placeholder:text-white/50 rounded-lg"
