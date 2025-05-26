@@ -43,6 +43,7 @@ function AppContent() {
     handDetectionConfidence,
     gestureConfidence,
     autoStartDelay,
+    autoRecognitionDelay,
     isDarkMode,
     showSavePanel,
 
@@ -60,6 +61,7 @@ function AppContent() {
     setHandDetectionConfidence,
     setGestureConfidence,
     setAutoStartDelay,
+    setAutoRecognitionDelay,
     toggleTheme,
     setShowSavePanel,
     setLoadingToastId,
@@ -87,6 +89,10 @@ function AppContent() {
   const legacySocketRef = useRef<WebSocket | null>(null);
   const autoStartTimerRef = useRef<NodeJS.Timeout | null>(null);
   const loadingToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Page Visibility API handling for background processing
+  const [isWindowVisible, setIsWindowVisible] = useState(true);
+  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced dismiss function that also clears timeout
   const dismissLoadingToastWithTimeout = () => {
@@ -211,7 +217,7 @@ function AppContent() {
         console.log("📊 Final trajectory length:", trajectory.length);
         setIsDrawing(false);
         recognizeGesture(trajectory);
-      }, 2000);
+      }, autoRecognitionDelay * 1000);
     } else if (isDrawing && fingerDetection) {
       console.log("✋ Hand still detected, continuing to draw...");
     }
@@ -632,6 +638,119 @@ function AppContent() {
     } catch (error) {
       console.error("Failed to update tray icon:", error);
     }
+  };
+
+  // Page Visibility API handling for background processing
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      setIsWindowVisible(isVisible);
+
+      console.log(
+        `🔍 Window visibility changed: ${isVisible ? "visible" : "hidden"}`
+      );
+
+      if (isVisible) {
+        // Window became visible - ensure connections are active
+        console.log("🔄 Window visible - checking connections...");
+        if (!isConnected) {
+          console.log("🔄 Reconnecting WebSockets after window became visible");
+          connectWebSockets();
+        }
+        // Clear any existing keepalive and restart
+        if (keepAliveIntervalRef.current) {
+          clearInterval(keepAliveIntervalRef.current);
+        }
+        startKeepAlive();
+      } else {
+        // Window became hidden - start aggressive keepalive
+        console.log("🔄 Window hidden - starting aggressive keepalive");
+        startKeepAlive();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Check initial state
+    setIsWindowVisible(!document.hidden);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (keepAliveIntervalRef.current) {
+        clearInterval(keepAliveIntervalRef.current);
+      }
+    };
+  }, [isConnected]);
+
+  // WebSocket keepalive function
+  const startKeepAlive = () => {
+    if (keepAliveIntervalRef.current) {
+      clearInterval(keepAliveIntervalRef.current);
+    }
+
+    keepAliveIntervalRef.current = setInterval(
+      () => {
+        // Send ping to frame socket
+        if (
+          frameSocketRef.current &&
+          frameSocketRef.current.readyState === WebSocket.OPEN
+        ) {
+          frameSocketRef.current.send(
+            JSON.stringify({ type: "ping", timestamp: Date.now() })
+          );
+        } else if (
+          frameSocketRef.current &&
+          frameSocketRef.current.readyState !== WebSocket.CONNECTING
+        ) {
+          console.log(
+            "🔄 Frame socket disconnected during keepalive - reconnecting"
+          );
+          connectWebSockets();
+        }
+
+        // Send ping to legacy socket
+        if (
+          legacySocketRef.current &&
+          legacySocketRef.current.readyState === WebSocket.OPEN
+        ) {
+          legacySocketRef.current.send(
+            JSON.stringify({ type: "ping", timestamp: Date.now() })
+          );
+        } else if (
+          legacySocketRef.current &&
+          legacySocketRef.current.readyState !== WebSocket.CONNECTING
+        ) {
+          console.log(
+            "🔄 Legacy socket disconnected during keepalive - reconnecting"
+          );
+          connectWebSockets();
+        }
+
+        console.log(
+          `💓 Keepalive sent (window ${isWindowVisible ? "visible" : "hidden"})`
+        );
+
+        // When in background, also send a request to refresh the detection state
+        // This ensures the backend keeps processing frames even when the app is hidden
+        if (
+          !isWindowVisible &&
+          frameSocketRef.current &&
+          frameSocketRef.current.readyState === WebSocket.OPEN
+        ) {
+          frameSocketRef.current.send(
+            JSON.stringify({
+              type: "refresh_detection",
+              force_process: true,
+              timestamp: Date.now(),
+            })
+          );
+          console.log(
+            "🔄 Sent force_process request to keep backend active while hidden"
+          );
+        }
+      },
+      isWindowVisible ? 10000 : 20
+    ); // More frequent pings when hidden (1 second instead of 10)
   };
 
   return (
