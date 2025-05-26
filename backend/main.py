@@ -730,6 +730,9 @@ async def frame_stream_endpoint(websocket: WebSocket):
                     # Initialize detection variable
                     detection = None
                     
+                    # Process the frame if we have base64 data and should process this frame
+                    frame_data = message.get("frame") or message.get("data")  # Check both field names
+                    
                     # Frame skipping logic for performance
                     frame_skip_counter += 1
                     should_process = frame_skip_counter % process_every_nth_frame == 0
@@ -739,18 +742,7 @@ async def frame_stream_endpoint(websocket: WebSocket):
                         "type": "frame_received"
                     }))
                     
-                    # Process the frame if we have base64 data and should process this frame
-                    frame_data = message.get("frame") or message.get("data")  # Check both field names
-                    
-                    # Check if this is a background mode request
-                    background_mode = message.get("background_mode", False)
-                    
-                    # Adjust processing frequency based on background mode
-                    if background_mode:
-                        process_every_nth_frame = 0.5  # Process more frames in background mode
-                        logger.info("🔄 Processing in background mode with higher frequency")
-                    
-                    if frame_data and camera_manager.tracking_enabled and (should_process or background_mode):
+                    if frame_data and camera_manager.tracking_enabled and should_process:
                         # Reduced logging for performance
                         try:
                             # Decode base64 frame
