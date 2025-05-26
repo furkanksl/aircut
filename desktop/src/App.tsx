@@ -705,6 +705,7 @@ function AppContent() {
                   onClearTrajectory={clearGesture}
                   onRecognizeGesture={recognizeGesture}
                   onLoadTemplates={loadTemplatesFromStorage}
+                  onReconnect={connectWebSockets}
                   isActive={true}
                 />
               </div>
@@ -1149,7 +1150,7 @@ function AppContent() {
             <div className="w-px h-4 bg-gray-300 dark:bg-white/20" />
             <div className="flex items-center space-x-2 text-xs">
               <Activity className="w-3 h-3" />
-              <span>30 FPS</span>
+              <span>{isConnected ? "30" : "-"} FPS</span>
             </div>
           </div>
         </div>
