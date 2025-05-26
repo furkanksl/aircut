@@ -387,11 +387,11 @@ async def health_check():
         "model_loaded": camera_manager.model is not None
     }
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time communication"""
+@app.websocket("/ws/gestures")
+async def gesture_websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for gesture recognition and command execution"""
     await websocket.accept()
-    logger.info("WebSocket connection established")
+    logger.info("Gesture WebSocket connection established")
     
     try:
         while True:
@@ -399,7 +399,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = json.loads(data)
             
             message_type = message.get("message_type") or message.get("type")  # Support both formats
-            logger.info(f"Received message: {message_type}")
+            logger.info(f"Received gesture message: {message_type}")
             
             if message_type == "ping":
                 # Handle ping/keepalive messages
@@ -513,15 +513,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
                 
     except WebSocketDisconnect:
-        logger.info("WebSocket connection closed")
+        logger.info("Gesture WebSocket disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"Gesture WebSocket error: {e}")
 
 @app.websocket("/ws/frames")
-async def frame_stream_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for frame streaming with detection - matches Tauri app expectations"""
+async def camera_stream_websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for camera frame streaming and hand detection"""
     await websocket.accept()
-    logger.info("Frame streaming WebSocket connected")
+    logger.info("Camera stream WebSocket connected")
     
     # Frame skipping for performance
     frame_skip_counter = 0
@@ -534,7 +534,7 @@ async def frame_stream_endpoint(websocket: WebSocket):
         # Send initial connection confirmation
         await websocket.send_text(json.dumps({
             "type": "connection_established",
-            "message": "Frame streaming ready",
+            "message": "Camera stream ready",
             "current_hand_confidence": current_hand_detection_confidence,
             "current_gesture_confidence": current_gesture_recognition_confidence
         }))
@@ -670,9 +670,9 @@ async def frame_stream_endpoint(websocket: WebSocket):
                 }))
                 
     except WebSocketDisconnect:
-        logger.info("Frame streaming WebSocket disconnected")
+        logger.info("Camera stream WebSocket disconnected")
     except Exception as e:
-        logger.error(f"Frame streaming WebSocket error: {e}")
+        logger.error(f"Camera stream WebSocket error: {e}")
 
 if __name__ == "__main__":
     import uvicorn
