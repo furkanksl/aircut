@@ -10,6 +10,12 @@ use std::thread;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+#[cfg(target_os = "macos")]
+use {
+    cocoa::appkit::NSWindowCollectionBehavior,
+    objc::{msg_send, sel, sel_impl},
+};
+
 // Global icon cache to prevent excessive loading
 lazy_static::lazy_static! {
     static ref ICON_CACHE: Arc<Mutex<HashMap<String, Image<'static>>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -365,10 +371,27 @@ fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
                     // Left click shows/hides the main window
                     let app = tray.app_handle();
                     if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            let _ = window.hide();
+                        // Check if window is visible (not off-screen)
+                        let is_visible = match window.outer_position() {
+                            Ok(position) => position.x > -1000 && position.y > -1000,
+                            Err(_) => false
+                        };
+                        
+                        if is_visible {
+                            // Hide the window by moving it off-screen
+                            println!("📱 Moving window off-screen");
+                            let _ = window.set_position(tauri::LogicalPosition::new(-2000, -2000));
+                            let _ = window.set_size(tauri::LogicalSize::new(1, 1));
                         } else {
-                            let _ = window.show();
+                            // Show the window by moving it back on-screen
+                            println!("📱 Moving window back on-screen");
+                            let _ = window.set_size(tauri::LogicalSize::new(1400, 1000));
+                            let _ = window.center();
+                            
+                            // Ensure window is visible on all workspaces (all virtual desktops)
+                            #[cfg(target_os = "macos")]
+                            make_window_visible_on_all_workspaces(&window);
+                            
                             let _ = window.set_focus();
                             
                             // Dispatch window-shown event
@@ -387,7 +410,14 @@ fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
                 "settings" => {
                     // Show the main window when settings is clicked
                     if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
+                        // Move the window back on-screen
+                        let _ = window.set_size(tauri::LogicalSize::new(1400, 1000));
+                        let _ = window.center();
+                        
+                        // Ensure window is visible on all workspaces (all virtual desktops)
+                        #[cfg(target_os = "macos")]
+                        make_window_visible_on_all_workspaces(&window);
+                        
                         let _ = window.set_focus();
                         
                         // Dispatch window-shown event
@@ -421,6 +451,12 @@ fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
         .build(app)
         .map_err(|e| e.to_string())?;
     
+    // After recreating the tray, ensure window is set to be visible on all workspaces
+    if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "macos")]
+        make_window_visible_on_all_workspaces(&window);
+    }
+    
     println!("✅ Tray icon recreated successfully");
     Ok(())
 }
@@ -428,7 +464,14 @@ fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        window.show().map_err(|e| e.to_string())?;
+        // Move the window back on-screen
+        window.set_size(tauri::LogicalSize::new(1400, 1000)).map_err(|e| e.to_string())?;
+        window.center().map_err(|e| e.to_string())?;
+        
+        // Ensure window is visible on all workspaces (all virtual desktops)
+        #[cfg(target_os = "macos")]
+        make_window_visible_on_all_workspaces(&window);
+        
         window.set_focus().map_err(|e| e.to_string())?;
         
         // Dispatch window-shown event
@@ -528,8 +571,33 @@ fn create_tray_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu
     ])
 }
 
+// Function to periodically check and disable App Nap
+#[cfg(target_os = "macos")]
+fn start_app_nap_prevention_thread() {
+    std::thread::spawn(|| {
+        loop {
+            // Reapply App Nap prevention every 5 minutes
+            std::thread::sleep(std::time::Duration::from_secs(300));
+            
+            println!("🔄 Periodically refreshing App Nap prevention");
+            macos_app_nap::prevent();
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Prevent App Nap on macOS to ensure background processing continues
+    #[cfg(target_os = "macos")]
+    {
+        println!("🍎 Preventing macOS App Nap to ensure background processing");
+        macos_app_nap::prevent();
+        println!("✅ Successfully disabled App Nap");
+        
+        // Start thread to periodically refresh App Nap prevention
+        start_app_nap_prevention_thread();
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -587,10 +655,27 @@ pub fn run() {
                             // Left click shows/hides the main window
                             let app = tray.app_handle();
                             if let Some(window) = app.get_webview_window("main") {
-                                if window.is_visible().unwrap_or(false) {
-                                    let _ = window.hide();
+                                // Check if window is visible (not off-screen)
+                                let is_visible = match window.outer_position() {
+                                    Ok(position) => position.x > -1000 && position.y > -1000,
+                                    Err(_) => false
+                                };
+                                
+                                if is_visible {
+                                    // Hide the window by moving it off-screen
+                                    println!("📱 Moving window off-screen");
+                                    let _ = window.set_position(tauri::LogicalPosition::new(-2000, -2000));
+                                    let _ = window.set_size(tauri::LogicalSize::new(1, 1));
                                 } else {
-                                    let _ = window.show();
+                                    // Show the window by moving it back on-screen
+                                    println!("📱 Moving window back on-screen");
+                                    let _ = window.set_size(tauri::LogicalSize::new(1400, 1000));
+                                    let _ = window.center();
+                                    
+                                    // Ensure window is visible on all workspaces (all virtual desktops)
+                                    #[cfg(target_os = "macos")]
+                                    make_window_visible_on_all_workspaces(&window);
+                                    
                                     let _ = window.set_focus();
                                     
                                     // Dispatch window-shown event
@@ -609,30 +694,19 @@ pub fn run() {
                         "settings" => {
                             // Show the main window when settings is clicked
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
+                                // Move the window back on-screen
+                                let _ = window.set_size(tauri::LogicalSize::new(1400, 1000));
+                                let _ = window.center();
+                                
+                                // Ensure window is visible on all workspaces (all virtual desktops)
+                                #[cfg(target_os = "macos")]
+                                make_window_visible_on_all_workspaces(&window);
+                                
                                 let _ = window.set_focus();
                                 
                                 // Dispatch window-shown event
                                 let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
                             }
-                        }
-                        "quick_right" => {
-                            // Execute right arrow key command
-                            let _ = std::process::Command::new("osascript")
-                                .args(["-e", "tell application \"System Events\" to key code 124 using {control down}"])
-                                .spawn();
-                        }
-                        "quick_left" => {
-                            // Execute left arrow key command
-                            let _ = std::process::Command::new("osascript")
-                                .args(["-e", "tell application \"System Events\" to key code 123 using {control down}"])
-                                .spawn();
-                        }
-                        "quick_spotify" => {
-                            // Open Spotify
-                            let _ = std::process::Command::new("open")
-                                .args(["/Applications/Spotify.app"])
-                                .spawn();
                         }
                         "quit" => {
                             app.exit(0);
@@ -644,8 +718,11 @@ pub fn run() {
             
             // Initialize the app even if window is hidden
             if let Some(window) = app.get_webview_window("main") {
-                // Show the window briefly and then hide it to ensure initialization
-                // This is a workaround for WebView initialization issues
+                // Ensure window is visible on all workspaces (all virtual desktops)
+                #[cfg(target_os = "macos")]
+                make_window_visible_on_all_workspaces(&window);
+                
+                // Show the window briefly to ensure initialization
                 let _ = window.show();
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 
@@ -655,6 +732,12 @@ pub fn run() {
                     let _ = main_window.eval("window.dispatchEvent(new Event('initialize-app'))");
                 }
                 
+                // Move window off-screen to keep it running but visually hidden
+                println!("📱 Moving window off-screen after initialization");
+                let _ = window.set_position(tauri::LogicalPosition::new(-2000, -2000));
+                let _ = window.set_size(tauri::LogicalSize::new(1, 1));
+                let _ = window.show(); // Keep it "visible" but off-screen
+                
                 // Set up a handler for window close events
                 let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {
@@ -662,9 +745,10 @@ pub fn run() {
                         // Prevent the window from closing
                         api.prevent_close();
                         
-                        // Instead of closing the window, just hide it
+                        // Instead of closing the window, move it off-screen
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.hide();
+                            let _ = window.set_position(tauri::LogicalPosition::new(-2000, -2000));
+                            let _ = window.set_size(tauri::LogicalSize::new(1, 1));
                         }
                     }
                 });
@@ -691,4 +775,24 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![greet, execute_command, update_tray_icon, show_main_window, startup_complete])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "macos")]
+fn make_window_visible_on_all_workspaces(window: &tauri::WebviewWindow) {
+    use cocoa::appkit::{NSWindowCollectionBehavior};
+    use objc::{msg_send, sel, sel_impl};
+    
+    if let Ok(ns_window) = window.ns_window() {
+        let ns_window = ns_window as cocoa::base::id;
+        
+        unsafe {
+            let current_behavior: NSWindowCollectionBehavior = msg_send![ns_window, collectionBehavior];
+            let new_behavior = current_behavior | NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces;
+            let _: () = msg_send![ns_window, setCollectionBehavior: new_behavior];
+        }
+        
+        println!("✅ Window set to be visible on all workspaces");
+    } else {
+        println!("⚠️ Failed to get NSWindow handle");
+    }
 }

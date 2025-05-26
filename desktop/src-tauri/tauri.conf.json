@@ -18,7 +18,10 @@
         "minWidth": 1400,
         "minHeight": 1000,
         "visible": true,
-        "skipTaskbar": false
+        "skipTaskbar": true,
+        "backgroundThrottling": "disabled",
+        "alwaysOnTop": false,
+        "visibleOnAllWorkspaces": true
       }
     ],
     "security": {
