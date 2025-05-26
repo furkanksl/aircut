@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "aircut",
-        "width": 1200,
+        "width": 1400,
         "height": 1000,
-        "minWidth": 1200,
+        "minWidth": 1400,
         "minHeight": 1000
       }
     ],
