@@ -536,21 +536,21 @@ function AppContent() {
       <div className="h-full flex items-start justify-center p-8">
         <div className="w-full max-w-7xl mx-auto grid grid-cols-11 gap-8 my-auto">
           {/* Left Panel - Settings */}
-          <div className="col-span-3 flex flex-col justify-start space-y-4">
+          <div className="col-span-3 flex flex-col space-y-4">
             {/* Settings Panel */}
             <div
-              className={`${panelClass} rounded-2xl p-6 shadow-xl border border-white/20`}
+              className={`${panelClass} rounded-2xl p-2 shadow-xl border border-white/20 h-[400px]`}
             >
               {/* Header */}
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-600/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-600/20 flex items-center justify-center">
                   <Settings
-                    className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+                    className="w-4 h-4 text-indigo-600 dark:text-indigo-400"
                     strokeWidth={1.5}
                   />
                 </div>
                 <div>
-                  <h3 className={`${textClass} font-semibold text-lg`}>
+                  <h3 className={`${textClass} font-normal text-base`}>
                     Settings
                   </h3>
                   <p className={`${textMutedClass} text-xs`}>
@@ -564,13 +564,13 @@ function AppContent() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label
-                      className={`${textSecondaryClass} text-sm font-medium`}
+                      className={`${textSecondaryClass} text-sm font-normal`}
                     >
                       Hand Detection
                     </Label>
                     <div className="flex items-center space-x-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className={`${textClass} text-sm font-mono`}>
+                      <span className={`${textClass} text-sm font-thin`}>
                         {(handDetectionConfidence * 100).toFixed(0)}%
                       </span>
                     </div>
@@ -584,7 +584,7 @@ function AppContent() {
                       max={1}
                       min={0.1}
                       step={0.05}
-                      className="w-full"
+                      className="w-full [&>span[data-orientation=horizontal]]:h-1 "
                     />
                   </div>
                   <p className={`${textMutedClass} text-xs leading-relaxed`}>
@@ -596,13 +596,13 @@ function AppContent() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label
-                      className={`${textSecondaryClass} text-sm font-medium`}
+                      className={`${textSecondaryClass} text-sm font-normal`}
                     >
                       Gesture Recognition
                     </Label>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 font-thin">
                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span className={`${textClass} text-sm font-mono`}>
+                      <span className={`${textClass} text-sm`}>
                         {(gestureConfidence * 100).toFixed(0)}%
                       </span>
                     </div>
@@ -614,7 +614,7 @@ function AppContent() {
                       max={1}
                       min={0.3}
                       step={0.05}
-                      className="w-full"
+                      className="w-full [&>span[data-orientation=horizontal]]:h-1 "
                     />
                   </div>
                   <p className={`${textMutedClass} text-xs leading-relaxed`}>
@@ -627,13 +627,13 @@ function AppContent() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label
-                    className={`${textSecondaryClass} text-sm font-medium`}
+                    className={`${textSecondaryClass} text-sm font-normal`}
                   >
                     Auto-start delay
                   </Label>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 font-thin">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className={`${textClass} text-sm font-mono`}>
+                    <span className={`${textClass} text-sm font-thin`}>
                       {autoStartDelay.toFixed(1)} seconds
                     </span>
                   </div>
@@ -645,7 +645,7 @@ function AppContent() {
                     max={2}
                     min={0.1}
                     step={0.1}
-                    className="w-full"
+                    className="w-full [&>span[data-orientation=horizontal]]:h-1 "
                   />
                 </div>
                 <p className={`${textMutedClass} text-xs leading-relaxed`}>
@@ -654,7 +654,7 @@ function AppContent() {
               </div>
 
               {/* Quick Stats */}
-              <div className="grid grid-cols-3 gap-3 pt-4 border-t border-gray-200/50 dark:border-white/10">
+              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-200/50 dark:border-white/10 mt-2">
                 <div className="text-center">
                   <div className="text-lg font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
                     {templates.length}
@@ -842,7 +842,7 @@ function AppContent() {
 
             {/* Recording Controls - Bottom of Video Feed */}
             <div
-              className={`${panelClass} rounded-full py-1 px-2 shadow-xl border border-white/20 w-min mx-auto`}
+              className={`${panelClass} rounded-full py-1.5 px-2 shadow-xl border border-white/20 w-min mx-auto`}
             >
               {/* Main Recording Control - Centered */}
               <div className="flex items-center justify-center gap-x-4">
@@ -862,7 +862,7 @@ function AppContent() {
                   <Button
                     onClick={isDrawing ? handleStopDrawing : handleStartDrawing}
                     disabled={!isConnected}
-                    className={`flex-1 relative w-12 h-12 rounded-full transition-all duration-300 border-0 shadow-lg overflow-hidden ${
+                    className={`flex-1 relative w-10 h-10 rounded-full transition-all duration-300 border-0 shadow-lg overflow-hidden ${
                       isDrawing
                         ? "bg-red-500 hover:bg-red-600 text-white shadow-red-500/30"
                         : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30"
@@ -913,16 +913,16 @@ function AppContent() {
           {/* Right Panel - Templates */}
           <div className="col-span-3 flex flex-col justify-start h-full">
             <div
-              className={`${panelClass} rounded-2xl p-2 shadow-xl border border-white/20  h-[400px] flex flex-col`}
+              className={`${panelClass} rounded-2xl p-2 shadow-xl border border-white/20 h-[400px] flex flex-col`}
             >
               {/* Header */}
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
                     <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
-                    <h3 className={`${textClass} font-semibold text-base`}>
+                    <h3 className={`${textClass} font-normal text-base`}>
                       Library
                     </h3>
                     <p className={`${textMutedClass} text-xs`}>
