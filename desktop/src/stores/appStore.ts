@@ -26,6 +26,7 @@ interface AppState {
   handDetectionConfidence: number;
   gestureConfidence: number;
   autoStartDelay: number;
+  autoRecognitionDelay: number;
 
   // Theme state
   isDarkMode: boolean;
@@ -53,6 +54,7 @@ interface AppState {
   setHandDetectionConfidence: (confidence: number) => void;
   setGestureConfidence: (confidence: number) => void;
   setAutoStartDelay: (delay: number) => void;
+  setAutoRecognitionDelay: (delay: number) => void;
   setIsDarkMode: (darkMode: boolean) => void;
   toggleTheme: () => void;
   setShowTemplates: (show: boolean) => void;
@@ -89,6 +91,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   handDetectionConfidence: 0.75,
   gestureConfidence: 0.85,
   autoStartDelay: 0.5,
+  autoRecognitionDelay: 0.7,
   isDarkMode: true,
   showTemplates: false,
   showSavePanel: false,
@@ -113,6 +116,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setShowTemplates: (show) => set({ showTemplates: show }),
   setShowSavePanel: (show) => set({ showSavePanel: show }),
   setLoadingToastId: (id) => set({ loadingToastId: id }),
+  setAutoRecognitionDelay: (delay) => set({ autoRecognitionDelay: delay }),
 
   // Trajectory actions
   addTrajectoryPoint: (point) => {
