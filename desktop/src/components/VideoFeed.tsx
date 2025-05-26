@@ -78,11 +78,11 @@ export function VideoFeed({
         <div className="absolute inset-0 pointer-events-none">
           {/* Action buttons - only show when needed */}
           {trajectory.length > 0 && !isTracking && (
-            <div className="absolute bottom-4 right-4 flex gap-2 pointer-events-auto">
+            <div className="absolute bottom-3 right-3 flex gap-2 pointer-events-auto">
               {onRecognizeGesture && (
                 <Button
                   onClick={() => onRecognizeGesture(trajectory)}
-                  className="h-9 bg-gray-800/40 hover:bg-gray-800/60 dark:bg-white/20 dark:hover:bg-white/30 backdrop-blur-md text-white border-0 rounded-full shadow-md"
+                  className="cursor-pointer h-9 bg-gray-800/40 hover:bg-gray-800/60 dark:bg-white/20 dark:hover:bg-white/30 backdrop-blur-md text-white border-0 rounded-full shadow-md"
                 >
                   <Sparkles className="w-4 h-4" strokeWidth={1.5} />
                   Recognize
@@ -93,7 +93,7 @@ export function VideoFeed({
                 <Button
                   onClick={onClearTrajectory}
                   variant="outline"
-                  className="h-9 w-9 p-0 bg-gray-800/40 hover:bg-gray-800/60 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-md text-white border-0 rounded-full shadow-md"
+                  className="cursor-pointer h-9 w-9 p-0 bg-gray-800/40 hover:bg-gray-800/60 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-md text-white border-0 rounded-full shadow-md"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

@@ -991,9 +991,9 @@ function AppContent() {
                 <Button
                   onClick={() => setShowSavePanel(!showSavePanel)}
                   size="sm"
-                  className="absolute bottom-2 left-2 h-9 px-4 rounded-full text-xs font-medium bg-emerald-500 hover:bg-emerald-500/80 border border-emerald-200/50 dark:border-emerald-400/20 text-white shadow-lg shadow-emerald-500/30 transition-all duration-200"
+                  className="cursor-pointer absolute bottom-3 left-3 h-9 px-4 rounded-full text-xs font-medium bg-emerald-500 hover:bg-emerald-500/80 border border-emerald-200/50 dark:border-emerald-400/20 text-white shadow-lg shadow-emerald-500/30 transition-all duration-200"
                 >
-                  <Save className="w-3.5 h-3.5 mr-1.5" strokeWidth={2} />
+                  <Save className="w-3.5 h-3.5" strokeWidth={2} />
                   Save
                 </Button>
               )}
@@ -1302,14 +1302,14 @@ function AppContent() {
                   <Button
                     onClick={() => setShowSavePanel(false)}
                     variant="ghost"
-                    className="flex-1 h-10 bg-gray-50/80 hover:bg-gray-100/80 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 text-gray-700 dark:text-white/90 rounded-lg"
+                    className="cursor-pointer flex-1 h-10 bg-gray-50/80 hover:bg-gray-100/80 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 text-gray-700 dark:text-white/90 rounded-lg"
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={saveTemplate}
                     disabled={!templateName.trim() || trajectory.length < 2}
-                    className="flex-1 h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-lg shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300 hover:scale-[1.02] border-0"
+                    className="cursor-pointer flex-1 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors duration-200 border-0"
                   >
                     <Save className="w-3 h-3 mr-1" />
                     Save Template

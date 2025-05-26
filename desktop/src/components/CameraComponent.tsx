@@ -536,7 +536,7 @@ export function CameraComponent({
         />
 
         {/* Top Status Bar */}
-        <div className="absolute top-2 left-2 right-4 flex items-center justify-between z-20">
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-20">
           {/* Left Status */}
           <div className="flex items-center space-x-2">
             {cameraActive && (
@@ -550,8 +550,8 @@ export function CameraComponent({
           {/* Right Controls */}
           <div className="flex items-center space-x-2">
             {trajectory.length > 0 && (
-              <Badge className="bg-purple-500/90 text-white border-0 backdrop-blur-sm px-3 py-1">
-                <Target className="w-3 h-3 mr-1" />
+              <Badge className="bg-purple-500/40 text-white border-0 backdrop-blur-sm p-1">
+                <Target className="w-3 h-3" />
                 {trajectory.length}
               </Badge>
             )}
