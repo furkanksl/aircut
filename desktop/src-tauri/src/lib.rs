@@ -2,13 +2,21 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Manager, Runtime,
+    Manager, Runtime, Resource,
 };
 use image::GenericImageView;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::io::Cursor;
+use std::path::PathBuf;
+use tauri::{
+    menu::{
+        MenuEvent,
+    },
+    AppHandle, PhysicalPosition, WebviewWindow, LogicalPosition, LogicalSize,
+};
 
 #[cfg(target_os = "macos")]
 use {
@@ -213,6 +221,11 @@ async fn update_tray_icon(app: tauri::AppHandle, state: String) -> Result<(), St
                             *state = "ready".to_string();
                         }
                     }
+                } else {
+                    println!("⚠️ Tray icon not found during auto-transition, attempting to recreate");
+                    if let Err(e) = recreate_tray_icon(&app_handle) {
+                        println!("❌ Failed to recreate tray icon: {}", e);
+                    }
                 }
             }
         });
@@ -256,6 +269,11 @@ async fn update_tray_icon(app: tauri::AppHandle, state: String) -> Result<(), St
                         if let Ok(mut state) = CURRENT_TRAY_STATE.lock() {
                             *state = "ready".to_string();
                         }
+                    }
+                } else {
+                    println!("⚠️ Tray icon not found during auto-transition, attempting to recreate");
+                    if let Err(e) = recreate_tray_icon(&app_handle) {
+                        println!("❌ Failed to recreate tray icon: {}", e);
                     }
                 }
             }
@@ -321,6 +339,12 @@ async fn update_tray_icon(app: tauri::AppHandle, state: String) -> Result<(), St
 // Function to recreate the tray icon if it disappears
 fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
     println!("🔄 Recreating tray icon");
+    
+    // Remove any existing tray icons first to avoid duplicates
+    if let Some(tray) = app.tray_by_id("main") {
+        println!("🧹 Removing existing tray icon before recreation");
+        let _ = std::sync::Arc::new(tray).close();
+    }
     
     // Create tray menu
     let menu = create_tray_menu(app).map_err(|e| e.to_string())?;
@@ -423,24 +447,6 @@ fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
                         // Dispatch window-shown event
                         let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
                     }
-                }
-                "quick_right" => {
-                    // Execute right arrow key command
-                    let _ = std::process::Command::new("osascript")
-                        .args(["-e", "tell application \"System Events\" to key code 124 using {control down}"])
-                        .spawn();
-                }
-                "quick_left" => {
-                    // Execute left arrow key command
-                    let _ = std::process::Command::new("osascript")
-                        .args(["-e", "tell application \"System Events\" to key code 123 using {control down}"])
-                        .spawn();
-                }
-                "quick_spotify" => {
-                    // Open Spotify
-                    let _ = std::process::Command::new("open")
-                        .args(["/Applications/Spotify.app"])
-                        .spawn();
                 }
                 "quit" => {
                     app.exit(0);
@@ -604,6 +610,12 @@ pub fn run() {
             // Ensure the backend is running
             if let Err(e) = ensure_backend_is_running() {
                 println!("❌ Failed to ensure backend is running: {}", e);
+            }
+            
+            // Remove any existing tray icons first to avoid duplicates
+            if let Some(tray) = app.handle().tray_by_id("main") {
+                println!("🧹 Removing existing tray icon to avoid duplicates");
+                let _ = std::sync::Arc::new(tray).close();
             }
             
             // Create tray menu
