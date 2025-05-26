@@ -24,6 +24,7 @@ import {
   Moon,
   Settings,
   Terminal,
+  Edit,
 } from "lucide-react";
 
 function AppContent() {
@@ -64,6 +65,7 @@ function AppContent() {
     setLoadingToastId,
     loadTemplatesFromStorage,
     saveTemplate,
+    updateTemplate,
     deleteTemplate,
     clearGesture,
     dismissLoadingToast,
@@ -72,6 +74,13 @@ function AppContent() {
   // Local state for command execution
   const [isExecutingCommand, setIsExecutingCommand] = useState(false);
   const [executingCommand, setExecutingCommand] = useState<string>("");
+
+  // Local state for template editing
+  const [editingTemplate, setEditingTemplate] = useState<{
+    id: string;
+    name: string;
+    command: string;
+  } | null>(null);
 
   // WebSocket refs
   const frameSocketRef = useRef<WebSocket | null>(null);
@@ -541,6 +550,53 @@ function AppContent() {
       }, 2000);
     }
   };
+
+  // Template editing functions
+  const startEditingTemplate = (template: any) => {
+    setEditingTemplate({
+      id: template.id,
+      name: template.name,
+      command: template.command || "",
+    });
+  };
+
+  const saveTemplateEdit = () => {
+    if (!editingTemplate) return;
+
+    if (!editingTemplate.name.trim()) {
+      toast.error("Template name cannot be empty");
+      return;
+    }
+
+    updateTemplate(editingTemplate.id, {
+      name: editingTemplate.name.trim(),
+      command: editingTemplate.command.trim(),
+    });
+
+    setEditingTemplate(null);
+  };
+
+  const cancelTemplateEdit = () => {
+    setEditingTemplate(null);
+  };
+
+  // Keyboard shortcuts for edit modal
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (editingTemplate) {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          saveTemplateEdit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelTemplateEdit();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editingTemplate]);
 
   return (
     <div
@@ -1088,10 +1144,24 @@ function AppContent() {
                                 {template.command && (
                                   <div className="ml-8">
                                     <div className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10">
+                                      <Terminal className="w-3 h-3 mr-1 text-blue-600 dark:text-blue-400" />
                                       <span
                                         className={`${textMutedClass} text-xs`}
                                       >
                                         {template.command}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* No command indicator */}
+                                {!template.command && (
+                                  <div className="ml-8">
+                                    <div className="inline-flex items-center px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-500/10">
+                                      <span
+                                        className={`${textMutedClass} text-xs italic`}
+                                      >
+                                        No command
                                       </span>
                                     </div>
                                   </div>
@@ -1105,15 +1175,31 @@ function AppContent() {
                                 </div>
                               </div>
 
-                              {/* Delete Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteTemplate(template.id)}
-                                className="opacity-0 absolute top-1 right-1 group-hover:opacity-100 transition-all duration-200 h-6 w-6 p-0 text-gray-700 dark:text-white hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg cursor-pointer"
-                              >
-                                <Trash2 className="w-3 h-3" strokeWidth={1.5} />
-                              </Button>
+                              {/* Action Buttons */}
+                              <div className="opacity-0 absolute top-1 right-1 group-hover:opacity-100 transition-all duration-200 flex space-x-1">
+                                {/* Edit Button */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => startEditingTemplate(template)}
+                                  className="h-6 w-6 p-0 text-gray-700 dark:text-white hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/20 rounded-lg cursor-pointer"
+                                >
+                                  <Edit className="w-3 h-3" strokeWidth={1.5} />
+                                </Button>
+
+                                {/* Delete Button */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteTemplate(template.id)}
+                                  className="h-6 w-6 p-0 text-gray-700 dark:text-white hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg cursor-pointer"
+                                >
+                                  <Trash2
+                                    className="w-3 h-3"
+                                    strokeWidth={1.5}
+                                  />
+                                </Button>
+                              </div>
                             </div>
 
                             {/* Index indicator */}
@@ -1227,6 +1313,91 @@ function AppContent() {
                   >
                     <Save className="w-3 h-3 mr-1" />
                     Save Template
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Template Panel */}
+      {editingTemplate && (
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="max-w-md w-full mx-4">
+            <div
+              className={`${panelClass} rounded-2xl p-6 shadow-2xl border border-white/20`}
+            >
+              {/* Header */}
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 mb-3">
+                  <Edit className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className={`${textClass} font-semibold text-lg mb-1`}>
+                  Edit Template
+                </h3>
+                <p className={`${textMutedClass} text-sm`}>
+                  Update template name and command
+                </p>
+              </div>
+
+              {/* Form */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label
+                    className={`${textSecondaryClass} text-sm font-medium`}
+                  >
+                    Gesture Name
+                  </Label>
+                  <Input
+                    placeholder="e.g., Wave Hello"
+                    value={editingTemplate.name}
+                    onChange={(e) =>
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        name: e.target.value,
+                      })
+                    }
+                    className="h-10 bg-gray-50/80 border-gray-200 text-gray-900 placeholder:text-gray-500 dark:bg-white/5 dark:border-white/20 dark:text-white dark:placeholder:text-white/50 rounded-lg"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label
+                    className={`${textSecondaryClass} text-sm font-medium`}
+                  >
+                    Command <span className="text-gray-400">(Optional)</span>
+                  </Label>
+                  <Input
+                    placeholder="e.g., open /Applications/Spotify.app"
+                    value={editingTemplate.command}
+                    onChange={(e) =>
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        command: e.target.value,
+                      })
+                    }
+                    className="h-10 bg-gray-50/80 border-gray-200 text-gray-900 placeholder:text-gray-500 dark:bg-white/5 dark:border-white/20 dark:text-white dark:placeholder:text-white/50 rounded-lg"
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex space-x-3 pt-2">
+                  <Button
+                    onClick={cancelTemplateEdit}
+                    variant="ghost"
+                    className="cursor-pointer flex-1 h-10 bg-gray-50/80 hover:bg-gray-100/80 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-200/50 dark:border-white/10 text-gray-700 dark:text-white/90 rounded-lg"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={saveTemplateEdit}
+                    disabled={!editingTemplate.name.trim()}
+                    className="cursor-pointer flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 border-0"
+                  >
+                    <Edit className="w-3 h-3 mr-1" />
+                    Update Template
                   </Button>
                 </div>
               </div>
