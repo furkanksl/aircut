@@ -5,6 +5,16 @@ use tauri::{
     Manager, Runtime,
 };
 use image::GenericImageView;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+// Global icon cache to prevent excessive loading
+lazy_static::lazy_static! {
+    static ref ICON_CACHE: Arc<Mutex<HashMap<String, Image<'static>>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref CURRENT_TRAY_STATE: Arc<Mutex<String>> = Arc::new(Mutex::new("ready".to_string()));
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -84,6 +94,18 @@ fn get_icon_path(state: &str) -> String {
 }
 
 fn load_icon_from_path(path: &std::path::Path) -> Result<Image<'static>, Box<dyn std::error::Error>> {
+    // Convert path to string for cache lookup
+    let path_str = path.to_string_lossy().to_string();
+    
+    // Try to get from cache first
+    let mut cache = ICON_CACHE.lock().unwrap();
+    if let Some(cached_icon) = cache.get(&path_str) {
+        println!("🔍 Using cached icon for: {}", path.display());
+        return Ok(cached_icon.clone());
+    }
+    
+    // Not in cache, load from file
+    println!("🔍 Loading icon from path: {}", path.display());
     let image_bytes = std::fs::read(path)?;
     
     // Use image crate to decode the PNG
@@ -91,11 +113,153 @@ fn load_icon_from_path(path: &std::path::Path) -> Result<Image<'static>, Box<dyn
     let rgba = img.to_rgba8();
     let (width, height) = img.dimensions();
     
-    Ok(Image::new_owned(rgba.into_raw(), width, height))
+    // Create the image
+    let icon = Image::new_owned(rgba.into_raw(), width, height);
+    
+    // Store in cache
+    cache.insert(path_str, icon.clone());
+    
+    println!("✅ Successfully loaded icon: {}x{}", width, height);
+    Ok(icon)
 }
 
 #[tauri::command]
 async fn update_tray_icon(app: tauri::AppHandle, state: String) -> Result<(), String> {
+    // Get current state and check if we should update
+    let mut current_state = CURRENT_TRAY_STATE.lock().unwrap();
+    
+    // Don't update if we're already in a higher priority state
+    // Priority: drawing > recognizing > recognized > not_recognized > ready > disconnected
+    let should_update = match current_state.as_str() {
+        "drawing" => {
+            // Only update if we're transitioning to "recognizing" or keeping "drawing"
+            state == "recognizing" || state == "drawing"
+        },
+        "recognizing" => {
+            // Only update if we're transitioning to "recognized", "not_recognized", or back to "drawing"
+            state == "recognized" || state == "not_recognized" || state == "drawing"
+        },
+        "recognized" => {
+            // Allow transition to any state except "ready" or "disconnected"
+            state != "ready" && state != "disconnected" || state == "drawing"
+        },
+        "not_recognized" => {
+            // Allow transition to any state except "ready" or "disconnected"
+            state != "ready" && state != "disconnected" || state == "drawing"
+        },
+        "ready" => {
+            // Always allow transitions from ready state
+            true
+        },
+        "disconnected" => {
+            // Always allow transitions from disconnected state
+            true
+        },
+        _ => true,
+    };
+    
+    if !should_update {
+        println!("🔒 Not updating tray icon: current={}, requested={}", *current_state, state);
+        return Ok(());
+    }
+    
+    // Special handling for "drawing" state to ensure it stays visible
+    if state == "drawing" {
+        println!("🎨 Drawing state requested - this will override other states");
+    }
+    
+    // Special handling for "not_recognized" state to auto-transition to "ready" after 300ms
+    if state == "not_recognized" {
+        println!("⏱️ Setting up auto-transition from not_recognized to ready after 300ms");
+        
+        // Clone the app handle for use in the thread
+        let app_handle = app.clone();
+        
+        // Create a new thread to handle the delayed state transition
+        std::thread::spawn(move || {
+            // Sleep for 300ms
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            
+            // Transition to ready state
+            println!("⏱️ Auto-transitioning from not_recognized to ready state");
+            
+            // Create a direct tray_icon update instead of calling the async function
+            if let Some(tray) = app_handle.tray_by_id("main") {
+                let ready_tooltip = "AirCut - Ready to detect gestures";
+                let _ = tray.set_tooltip(Some(ready_tooltip));
+                
+                let icon_path = get_icon_path("ready");
+                
+                // Get the icon path
+                let icon_full_path = if cfg!(debug_assertions) {
+                    std::env::current_dir().unwrap_or_default().join(&icon_path)
+                } else {
+                    app_handle.path().resource_dir().unwrap_or_default().join(&icon_path)
+                };
+                
+                if icon_full_path.exists() {
+                    if let Ok(icon) = load_icon_from_path(&icon_full_path) {
+                        let _ = tray.set_icon(Some(icon));
+                        println!("🎨 Auto-updated tray icon to: ready ({})", icon_path);
+                        
+                        // Update the state tracking
+                        if let Ok(mut state) = CURRENT_TRAY_STATE.lock() {
+                            *state = "ready".to_string();
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Special handling for "recognized" state to auto-transition to "ready" after 3 seconds
+    if state == "recognized" {
+        println!("⏱️ Setting up auto-transition from recognized to ready after 3 seconds");
+        
+        // Clone the app handle for use in the thread
+        let app_handle = app.clone();
+        
+        // Create a new thread to handle the delayed state transition
+        std::thread::spawn(move || {
+            // Sleep for 3 seconds
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            
+            // Transition to ready state
+            println!("⏱️ Auto-transitioning from recognized to ready state");
+            
+            // Create a direct tray_icon update instead of calling the async function
+            if let Some(tray) = app_handle.tray_by_id("main") {
+                let ready_tooltip = "AirCut - Ready to detect gestures";
+                let _ = tray.set_tooltip(Some(ready_tooltip));
+                
+                let icon_path = get_icon_path("ready");
+                
+                // Get the icon path
+                let icon_full_path = if cfg!(debug_assertions) {
+                    std::env::current_dir().unwrap_or_default().join(&icon_path)
+                } else {
+                    app_handle.path().resource_dir().unwrap_or_default().join(&icon_path)
+                };
+                
+                if icon_full_path.exists() {
+                    if let Ok(icon) = load_icon_from_path(&icon_full_path) {
+                        let _ = tray.set_icon(Some(icon));
+                        println!("🎨 Auto-updated tray icon to: ready ({})", icon_path);
+                        
+                        // Update the state tracking
+                        if let Ok(mut state) = CURRENT_TRAY_STATE.lock() {
+                            *state = "ready".to_string();
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update the current state
+    *current_state = state.clone();
+    println!("🔄 Tray icon state changed to: {}", state);
+    
     let tooltip = match state.as_str() {
         "ready" => "AirCut - Ready to detect gestures",
         "drawing" => "AirCut - Recording gesture...",
@@ -139,8 +303,125 @@ async fn update_tray_icon(app: tauri::AppHandle, state: String) -> Result<(), St
         } else {
             println!("⚠️ Icon file not found: {}", icon_full_path.display());
         }
+    } else {
+        println!("⚠️ Tray icon not found, attempting to recreate it");
+        // Try to recreate the tray icon
+        recreate_tray_icon(&app)?;
     }
     
+    Ok(())
+}
+
+// Function to recreate the tray icon if it disappears
+fn recreate_tray_icon(app: &tauri::AppHandle) -> Result<(), String> {
+    println!("🔄 Recreating tray icon");
+    
+    // Create tray menu
+    let menu = create_tray_menu(app).map_err(|e| e.to_string())?;
+    
+    // Load initial icon
+    let initial_icon_path = get_icon_path("ready");
+    
+    // In development mode, use the source directory; in production, use resource directory
+    let icon_full_path = if cfg!(debug_assertions) {
+        // Development mode - current dir is already src-tauri/
+        std::env::current_dir()
+            .map_err(|e| e.to_string())?
+            .join(&initial_icon_path)
+    } else {
+        // Production mode - use resource directory
+        app.path().resource_dir()
+            .map_err(|e| e.to_string())?
+            .join(&initial_icon_path)
+    };
+    
+    println!("🔍 Loading initial tray icon from: {}", icon_full_path.display());
+    
+    let initial_icon = if icon_full_path.exists() {
+        match load_icon_from_path(&icon_full_path) {
+            Ok(icon) => {
+                println!("✅ Successfully loaded initial tray icon");
+                icon
+            }
+            Err(e) => {
+                println!("⚠️ Failed to load initial icon: {}", e);
+                app.default_window_icon().unwrap().clone()
+            }
+        }
+    } else {
+        println!("⚠️ Initial icon file not found: {}", icon_full_path.display());
+        app.default_window_icon().unwrap().clone()
+    };
+    
+    // Create system tray
+    let _tray = TrayIconBuilder::with_id("main")
+        .tooltip("AirCut - Ready")
+        .icon(initial_icon)
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            match event {
+                TrayIconEvent::Click { button: MouseButton::Left, .. } => {
+                    // Left click shows/hides the main window
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            
+                            // Dispatch window-shown event
+                            let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
+                        }
+                    }
+                }
+                TrayIconEvent::Click { button: MouseButton::Right, .. } => {
+                    // Right click shows the menu (handled automatically)
+                }
+                _ => {}
+            }
+        })
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "settings" => {
+                    // Show the main window when settings is clicked
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        
+                        // Dispatch window-shown event
+                        let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
+                    }
+                }
+                "quick_right" => {
+                    // Execute right arrow key command
+                    let _ = std::process::Command::new("osascript")
+                        .args(["-e", "tell application \"System Events\" to key code 124 using {control down}"])
+                        .spawn();
+                }
+                "quick_left" => {
+                    // Execute left arrow key command
+                    let _ = std::process::Command::new("osascript")
+                        .args(["-e", "tell application \"System Events\" to key code 123 using {control down}"])
+                        .spawn();
+                }
+                "quick_spotify" => {
+                    // Open Spotify
+                    let _ = std::process::Command::new("open")
+                        .args(["/Applications/Spotify.app"])
+                        .spawn();
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .build(app)
+        .map_err(|e| e.to_string())?;
+    
+    println!("✅ Tray icon recreated successfully");
     Ok(())
 }
 
@@ -149,16 +430,102 @@ async fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
+        
+        // Dispatch window-shown event
+        let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
     }
     Ok(())
 }
 
+// Function to check if the backend is running and start it if needed
+fn ensure_backend_is_running() -> Result<(), Box<dyn std::error::Error>> {
+    // Check if the backend is running by trying to connect to the port
+    let backend_running = std::net::TcpStream::connect("127.0.0.1:8000").is_ok();
+    
+    if !backend_running {
+        println!("🔄 Backend not running, attempting to start it...");
+        
+        // Get the path to the backend directory
+        let current_dir = std::env::current_dir()?;
+        let backend_dir = current_dir.parent().unwrap().join("backend");
+        
+        // Command to start the backend
+        let mut command = if cfg!(target_os = "windows") {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", "python", "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]);
+            cmd
+        } else {
+            let mut cmd = Command::new("python3");
+            cmd.args(["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"]);
+            cmd
+        };
+        
+        // Set the working directory and run in the background
+        command.current_dir(&backend_dir);
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        
+        // Start the process
+        match command.spawn() {
+            Ok(child) => {
+                println!("✅ Backend started successfully with PID: {:?}", child.id());
+                
+                // Start a thread to monitor the backend output
+                thread::spawn(move || {
+                    let _ = child.wait_with_output();
+                });
+                
+                // Wait a bit for the backend to start
+                thread::sleep(std::time::Duration::from_secs(2));
+                
+                // Check if it's actually running now
+                if std::net::TcpStream::connect("127.0.0.1:8000").is_ok() {
+                    println!("✅ Backend is now running on port 8000");
+                } else {
+                    println!("❌ Backend failed to start properly");
+                }
+            },
+            Err(e) => {
+                println!("❌ Failed to start backend: {}", e);
+            }
+        }
+    } else {
+        println!("✅ Backend is already running on port 8000");
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn startup_complete(app: tauri::AppHandle) -> Result<(), String> {
+    println!("✅ App startup complete, ready to detect gestures");
+    update_tray_icon(app, "ready".to_string()).await?;
+    Ok(())
+}
+
 fn create_tray_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    // Create main menu items
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
+    // let separator1 = PredefinedMenuItem::separator(app)?;
+    
+    // Create quick action items with a prefix
+    // let quick_right = MenuItem::with_id(app, "quick_right", "Desktop next", true, None::<&str>)?;
+    // let quick_left = MenuItem::with_id(app, "quick_left", "⬅️ Left Arrow", true, None::<&str>)?;
+    // let quick_spotify = MenuItem::with_id(app, "quick_spotify", "🎵 Open Spotify", true, None::<&str>)?;
+    
+    let separator2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit AirCut", true, None::<&str>)?;
     
-    Menu::with_items(app, &[&settings, &separator, &quit])
+    // Build the complete menu
+    Menu::with_items(app, &[
+        &settings, 
+        // &separator1, 
+        // &quick_right, 
+        // &quick_left, 
+        // &quick_spotify, 
+        &separator2, 
+        &quit
+    ])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -166,11 +533,18 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Ensure the backend is running
+            if let Err(e) = ensure_backend_is_running() {
+                println!("❌ Failed to ensure backend is running: {}", e);
+            }
+            
             // Create tray menu
             let menu = create_tray_menu(&app.handle())?;
             
             // Load initial icon
-            let initial_icon_path = get_icon_path("disconnected");
+            let initial_icon_path = get_icon_path("ready");
+            
+            println!("🔍 Current working directory: {:?}", std::env::current_dir().unwrap());
             
             // In development mode, use the source directory; in production, use resource directory
             let icon_full_path = if cfg!(debug_assertions) {
@@ -183,17 +557,27 @@ pub fn run() {
                 app.path().resource_dir()?.join(&initial_icon_path)
             };
             
+            println!("🔍 Loading initial tray icon from: {}", icon_full_path.display());
+            
             let initial_icon = if icon_full_path.exists() {
-                load_icon_from_path(&icon_full_path).unwrap_or_else(|_| {
-                    app.default_window_icon().unwrap().clone()
-                })
+                match load_icon_from_path(&icon_full_path) {
+                    Ok(icon) => {
+                        println!("✅ Successfully loaded initial tray icon");
+                        icon
+                    }
+                    Err(e) => {
+                        println!("⚠️ Failed to load initial icon: {}", e);
+                        app.default_window_icon().unwrap().clone()
+                    }
+                }
             } else {
+                println!("⚠️ Initial icon file not found: {}", icon_full_path.display());
                 app.default_window_icon().unwrap().clone()
             };
             
-            // Create system tray
+            // Create system tray with show_menu_on_left_click explicitly set to true for better visibility
             let _tray = TrayIconBuilder::with_id("main")
-                .tooltip("AirCut - Disconnected")
+                .tooltip("AirCut - Ready")
                 .icon(initial_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -208,6 +592,9 @@ pub fn run() {
                                 } else {
                                     let _ = window.show();
                                     let _ = window.set_focus();
+                                    
+                                    // Dispatch window-shown event
+                                    let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
                                 }
                             }
                         }
@@ -224,7 +611,28 @@ pub fn run() {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                                
+                                // Dispatch window-shown event
+                                let _ = window.eval("window.dispatchEvent(new Event('window-shown'))");
                             }
+                        }
+                        "quick_right" => {
+                            // Execute right arrow key command
+                            let _ = std::process::Command::new("osascript")
+                                .args(["-e", "tell application \"System Events\" to key code 124 using {control down}"])
+                                .spawn();
+                        }
+                        "quick_left" => {
+                            // Execute left arrow key command
+                            let _ = std::process::Command::new("osascript")
+                                .args(["-e", "tell application \"System Events\" to key code 123 using {control down}"])
+                                .spawn();
+                        }
+                        "quick_spotify" => {
+                            // Open Spotify
+                            let _ = std::process::Command::new("open")
+                                .args(["/Applications/Spotify.app"])
+                                .spawn();
                         }
                         "quit" => {
                             app.exit(0);
@@ -234,9 +642,53 @@ pub fn run() {
                 })
                 .build(app)?;
             
+            // Initialize the app even if window is hidden
+            if let Some(window) = app.get_webview_window("main") {
+                // Show the window briefly and then hide it to ensure initialization
+                // This is a workaround for WebView initialization issues
+                let _ = window.show();
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                
+                // Initialize the app
+                let app_handle = app.handle();
+                if let Some(main_window) = app_handle.get_webview_window("main") {
+                    let _ = main_window.eval("window.dispatchEvent(new Event('initialize-app'))");
+                }
+                
+                // Set up a handler for window close events
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent the window from closing
+                        api.prevent_close();
+                        
+                        // Instead of closing the window, just hide it
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    }
+                });
+            }
+            
+            // Set up a periodic tray icon check to ensure it's always visible
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+                    
+                    // Check if tray icon exists, recreate if not
+                    if app_handle.tray_by_id("main").is_none() {
+                        println!("⚠️ Tray icon not found in periodic check, attempting to recreate");
+                        if let Err(e) = recreate_tray_icon(&app_handle) {
+                            println!("❌ Failed to recreate tray icon: {}", e);
+                        }
+                    }
+                }
+            });
+            
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, execute_command, update_tray_icon, show_main_window])
+        .invoke_handler(tauri::generate_handler![greet, execute_command, update_tray_icon, show_main_window, startup_complete])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
