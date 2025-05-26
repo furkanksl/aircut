@@ -10,4 +10,4 @@ scipy==1.15.3
 pydantic==2.11.5
 python-jose==3.4.0
 Pillow==11.2.1
-inference==0.45.3
+inference==0.50.1
