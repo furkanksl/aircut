@@ -63,6 +63,10 @@ interface AppState {
   loadTemplatesFromStorage: () => void;
   saveTemplatesToStorage: () => void;
   saveTemplate: () => void;
+  updateTemplate: (
+    templateId: string,
+    updates: Partial<Pick<Template, "name" | "command">>
+  ) => void;
   deleteTemplate: (templateId: string) => void;
   clearGesture: () => void;
 
@@ -240,6 +244,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.error("❌ Failed to save template:", error);
       toast.error("Failed to save template");
     }
+  },
+
+  updateTemplate: (templateId, updates) => {
+    const state = get();
+    const templateToUpdate = state.templates.find((t) => t.id === templateId);
+
+    if (!templateToUpdate) {
+      toast.error("Template not found");
+      return;
+    }
+
+    const updatedTemplates = state.templates.map((template) =>
+      template.id === templateId ? { ...template, ...updates } : template
+    );
+
+    set({ templates: updatedTemplates });
+    get().saveTemplatesToStorage();
+
+    console.log("✏️ Template updated:", templateToUpdate.name, "->", updates);
+    toast.success(
+      `Template "${
+        updates.name || templateToUpdate.name
+      }" updated successfully!`
+    );
   },
 
   deleteTemplate: (templateId) => {
