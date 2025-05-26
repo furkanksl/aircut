@@ -82,7 +82,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   templates: [],
   templateName: "",
   templateCommand: "",
-  handDetectionConfidence: 0.5,
+  handDetectionConfidence: 0.75,
   gestureConfidence: 0.85,
   autoStartDelay: 0.5,
   isDarkMode: true,
