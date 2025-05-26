@@ -241,7 +241,7 @@ class HighPerformanceCameraManager:
         
         # Current state
         self.current_frame = None
-        self.current_detections = []
+        self.current_detections = []  # Store current detections for background processing
         self.frame_lock = threading.RLock()
         
         # Performance optimization
@@ -519,7 +519,15 @@ async def websocket_endpoint(websocket: WebSocket):
             message_type = message.get("message_type") or message.get("type")  # Support both formats
             logger.info(f"Received message: {message_type}")
             
-            if message_type == "start_tracking":
+            if message_type == "ping":
+                # Handle ping/keepalive messages
+                await websocket.send_text(json.dumps({
+                    "type": "pong",
+                    "timestamp": time.time()
+                }))
+                continue
+                
+            elif message_type == "start_tracking":
                 camera_manager.tracking_enabled = True
                 await websocket.send_text(json.dumps({
                     "status": "success",
@@ -656,6 +664,47 @@ async def frame_stream_endpoint(websocket: WebSocket):
                 data = await websocket.receive_text()
                 message = json.loads(data)
                 
+                # Handle ping messages for keepalive
+                if message.get("type") == "ping":
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "timestamp": time.time()
+                    }))
+                    continue
+                
+                # Handle refresh_detection messages from background app
+                if message.get("type") == "refresh_detection":
+                    force_process = message.get("force_process", False)
+                    logger.info(f"🔄 Received refresh_detection request (force_process={force_process})")
+                    
+                    # Ensure tracking is enabled
+                    if not camera_manager.tracking_enabled:
+                        camera_manager.tracking_enabled = True
+                        logger.info("🔄 Re-enabled tracking due to refresh request")
+                    
+                    # Reduce frame skipping when force processing is requested
+                    if force_process:
+                        process_every_nth_frame = 0.2  # Process almost every frame when in background
+                        
+                    # Get current detection if available
+                    if camera_manager.current_detections:
+                        detection = camera_manager.current_detections[0]
+                        await websocket.send_text(json.dumps({
+                            "type": "detection",
+                            "detection": detection,
+                            "timestamp": time.time(),
+                            "source": "refresh_request"
+                        }))
+                    else:
+                        # Trigger a new detection immediately
+                        await websocket.send_text(json.dumps({
+                            "type": "detection",
+                            "detection": None,
+                            "timestamp": time.time(),
+                            "source": "refresh_request"
+                        }))
+                    continue
+                
                 # Handle configuration updates
                 if message.get("type") == "update_confidence":
                     if "hand_detection_confidence" in message:
@@ -673,7 +722,9 @@ async def frame_stream_endpoint(websocket: WebSocket):
                     }))
                     continue
                 
-                logger.info(f"📨 WebSocket message received: type={message.get('type')}, tracking_enabled={camera_manager.tracking_enabled}")
+                # Only log non-ping messages to reduce noise
+                if message.get("type") != "ping":
+                    logger.info(f"📨 WebSocket message received: type={message.get('type')}, tracking_enabled={camera_manager.tracking_enabled}")
                 
                 if message.get("type") == "frame":
                     # Initialize detection variable
@@ -690,7 +741,16 @@ async def frame_stream_endpoint(websocket: WebSocket):
                     
                     # Process the frame if we have base64 data and should process this frame
                     frame_data = message.get("frame") or message.get("data")  # Check both field names
-                    if frame_data and camera_manager.tracking_enabled and should_process:
+                    
+                    # Check if this is a background mode request
+                    background_mode = message.get("background_mode", False)
+                    
+                    # Adjust processing frequency based on background mode
+                    if background_mode:
+                        process_every_nth_frame = 0.5  # Process more frames in background mode
+                        logger.info("🔄 Processing in background mode with higher frequency")
+                    
+                    if frame_data and camera_manager.tracking_enabled and (should_process or background_mode):
                         # Reduced logging for performance
                         try:
                             # Decode base64 frame
@@ -738,11 +798,14 @@ async def frame_stream_endpoint(websocket: WebSocket):
                                                 'confidence': float(best_detection.confidence),
                                                 'class': getattr(best_detection, 'class_name', 'hand')
                                             }
-                                
-                                detection_time = time.time() - start_time
-                                # Only log slow detections
-                                if detection_time > 0.1:  # >100ms
-                                    logger.warning(f"⚠️ Slow detection: {detection_time:.3f}s")
+                                            
+                                            # Store detection for background processing
+                                            camera_manager.current_detections = [detection]
+                                    
+                                    detection_time = time.time() - start_time
+                                    # Only log slow detections
+                                    if detection_time > 0.1:  # >100ms
+                                        logger.warning(f"⚠️ Slow detection: {detection_time:.3f}s")
                                 
                         except Exception as e:
                             logger.error(f"Frame processing error: {e}")
