@@ -228,9 +228,8 @@ gesture_recognizer = SimpleGestureRecognizer()
 
 class HighPerformanceCameraManager:
     def __init__(self):
-        self.cap = None
         self.model = None
-        self.is_active = False
+        self.is_active = True
         self.tracking_enabled = True  # Enable tracking by default
         
         # Performance tracking
@@ -240,59 +239,17 @@ class HighPerformanceCameraManager:
         self.detection_times = deque(maxlen=30)
         
         # Current state
-        self.current_frame = None
         self.current_detections = []  # Store current detections for background processing
         self.frame_lock = threading.RLock()
         
-        # Performance optimization
-        self.skip_detection_frames = 2  # Back to processing every 3rd frame for better performance
-        self.frame_counter = 0
-        
         # Frame quality settings
-        self.jpeg_quality = 0.75  # Reduce quality slightly for better performance
-        self.detection_frame_size = 320  # Reduce inference size for speed (was 416)
+        self.detection_frame_size = 320  # Inference size for speed
         
-    def initialize_camera(self):
-        """Initialize camera with maximum performance settings"""
-        if self.cap is not None:
-            self.cap.release()
-            
-        # Initialize camera with best backend
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            # Try different backends
-            for backend in [cv2.CAP_AVFOUNDATION, cv2.CAP_V4L2, cv2.CAP_DSHOW]:
-                try:
-                    self.cap = cv2.VideoCapture(0, backend)
-                    if self.cap.isOpened():
-                        break
-                except:
-                    continue
-                    
-        if not self.cap or not self.cap.isOpened():
-            logger.error("Failed to open camera")
-            return False
-            
-        # Optimize camera settings for maximum performance
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
-        # Additional optimizations
-        try:
-            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        except:
-            pass
-            
-        # Verify settings
-        width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = self.cap.get(cv2.CAP_PROP_FPS)
-        
-        logger.info(f"Camera initialized: {width}x{height} @ {fps}fps")
-        
-        # Initialize inference model if available
+        # Initialize inference model
+        self.initialize_model()
+    
+    def initialize_model(self):
+        """Initialize inference model if available"""
         if INFERENCE_AVAILABLE and ROBOFLOW_API_KEY:
             try:
                 self.model = get_model(model_id=ROBOFLOW_MODEL_ID, api_key=ROBOFLOW_API_KEY)
@@ -300,103 +257,73 @@ class HighPerformanceCameraManager:
             except Exception as e:
                 logger.error(f"Failed to load inference model: {e}")
                 self.model = None
-        
-        self.is_active = True
-        return True
     
-    def get_frame_optimized(self):
-        """Get frame with optimized detection processing"""
-        if not self.is_active or self.cap is None:
-            return None
-            
-        ret, frame = self.cap.read()
-        if not ret:
+    def process_frame(self, frame, confidence_threshold):
+        """Process a frame received from frontend"""
+        if not self.tracking_enabled or self.model is None or frame is None:
             return None
             
         with self.frame_lock:
-            self.current_frame = frame.copy()
             self.frame_count += 1
-            self.frame_counter += 1
+            start_time = time.time()
             
-            # Only run detection every few frames to maintain high FPS
-            run_detection = (
-                self.tracking_enabled and 
-                self.model is not None and 
-                (self.frame_counter % (self.skip_detection_frames + 1) == 0)
-            )
+            # Resize frame for faster detection
+            height, width = frame.shape[:2]
+            detection_frame = cv2.resize(frame, (self.detection_frame_size, self.detection_frame_size))
             
-            if run_detection:
-                start_time = time.time()
+            try:
+                # Direct inference
+                results = self.model.infer(detection_frame, confidence=confidence_threshold)
                 
-                # Resize frame for faster detection
-                detection_frame = cv2.resize(frame, (self.detection_frame_size, self.detection_frame_size))
-                
-                try:
-                    # Direct inference - much faster than HTTP
-                    results = self.model.infer(detection_frame, confidence=CONFIDENCE_THRESHOLD)
+                # Process results
+                if results and len(results) > 0:
+                    result = results[0]
+                    predictions = getattr(result, 'predictions', [])
                     
-                    # Process results
-                    detections = []
-                    if hasattr(results, 'predictions') and results.predictions:
-                        for pred in results.predictions:
+                    # Find best detection
+                    if predictions:
+                        best_detection = max(predictions, key=lambda x: x.confidence)
+                        
+                        if best_detection.confidence > confidence_threshold:
+                            # Scale coordinates back to original frame size
+                            scale_x = width / self.detection_frame_size
+                            scale_y = height / self.detection_frame_size
+                            
                             detection = {
-                                'x': pred.x,
-                                'y': pred.y,
-                                'width': pred.width,
-                                'height': pred.height,
-                                'confidence': pred.confidence,
-                                'class': getattr(pred, 'class_name', 'hand')
+                                'x': float(best_detection.x * scale_x),
+                                'y': float(best_detection.y * scale_y),
+                                'width': float(best_detection.width * scale_x),
+                                'height': float(best_detection.height * scale_y),
+                                'confidence': float(best_detection.confidence),
+                                'class': getattr(best_detection, 'class_name', 'hand')
                             }
-                            detections.append(detection)
-                    
-                    # Scale detections back to full frame size
-                    scale_x = 640 / self.detection_frame_size
-                    scale_y = 480 / self.detection_frame_size
-                    scaled_detections = []
-                    
-                    for det in detections:
-                        scaled_det = {
-                            'x': int(det['x'] * scale_x),
-                            'y': int(det['y'] * scale_y),
-                            'width': int(det['width'] * scale_x),
-                            'height': int(det['height'] * scale_y),
-                            'confidence': det['confidence'],
-                            'class': det['class']
-                        }
-                        scaled_detections.append(scaled_det)
-                    
-                    self.current_detections = scaled_detections
-                    self.detection_count += 1
-                    
-                    # Track performance
-                    detection_time = time.time() - start_time
-                    self.detection_times.append(detection_time)
-                    
-                except Exception as e:
-                    logger.error(f"Detection error: {e}")
-                    # Don't clear detections on error, keep last valid ones
+                            
+                            # Store detection for background processing
+                            self.current_detections = [detection]
+                            self.detection_count += 1
+                            
+                            # Track performance
+                            detection_time = time.time() - start_time
+                            self.detection_times.append(detection_time)
+                            
+                            # Performance logging
+                            if self.detection_count % 60 == 0:  # Every 60 detections
+                                current_time = time.time()
+                                elapsed = current_time - self.fps_start_time
+                                if elapsed > 0:
+                                    detection_fps = len(self.detection_times) / elapsed
+                                    avg_detection_time = sum(self.detection_times) / len(self.detection_times)
+                                    logger.info(f"📊 Detection FPS: {detection_fps:.1f}, Avg time: {avg_detection_time:.3f}s")
+                                    
+                                    self.fps_start_time = current_time
+                                    self.detection_times.clear()
+                            
+                            return detection
+                
+            except Exception as e:
+                logger.error(f"Detection error: {e}")
             
-            # Draw detections on frame
-            if self.tracking_enabled and self.current_detections:
-                frame = self._draw_detections_fast(frame, self.current_detections)
-            
-            # Performance logging
-            if self.frame_count % 60 == 0:  # Every 60 frames
-                current_time = time.time()
-                elapsed = current_time - self.fps_start_time
-                if elapsed > 0:
-                    fps = 60 / elapsed
-                    logger.info(f"📊 Stream FPS: {fps:.1f}")
-                    
-                    if self.detection_times:
-                        avg_detection_time = sum(self.detection_times) / len(self.detection_times)
-                        detection_fps = len(self.detection_times) / elapsed
-                        logger.info(f"📊 Detection FPS: {detection_fps:.1f}, Avg time: {avg_detection_time:.3f}s")
-                    
-                    self.fps_start_time = current_time
-                    self.detection_times.clear()
-            
-            return frame
+            return None
     
     def _draw_detections_fast(self, frame, detections):
         """Ultra-fast detection drawing"""
@@ -431,19 +358,17 @@ class HighPerformanceCameraManager:
         return frame
         
     def release(self):
-        """Release camera resources"""
+        """Release resources"""
         self.is_active = False
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
+        self.model = None
 
 # Global camera manager
 camera_manager = HighPerformanceCameraManager()
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize camera on startup"""
-    camera_manager.initialize_camera()
+    """Initialize model on startup"""
+    camera_manager.initialize_model()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -455,55 +380,12 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "camera_active": camera_manager.is_active,
         "tracking_enabled": camera_manager.tracking_enabled,
-        "frame_count": camera_manager.frame_count,
-        "detection_count": camera_manager.detection_count,
+        "frames_processed": camera_manager.frame_count,
+        "detections_made": camera_manager.detection_count,
         "inference_available": INFERENCE_AVAILABLE,
         "model_loaded": camera_manager.model is not None
     }
-
-def generate_frames_ultra_fast():
-    """Ultra-fast frame generation - single thread, minimal overhead"""
-    # Optimized JPEG encoding
-    encode_params = [
-        cv2.IMWRITE_JPEG_QUALITY, 80,
-        cv2.IMWRITE_JPEG_OPTIMIZE, True
-    ]
-    
-    while True:
-        frame = camera_manager.get_frame_optimized()
-        if frame is None:
-            time.sleep(0.001)
-            continue
-            
-        # Single JPEG encoding
-        success, buffer = cv2.imencode('.jpg', frame, encode_params)
-        if not success:
-            continue
-            
-        frame_bytes = buffer.tobytes()
-        
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n'
-               b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n' + 
-               frame_bytes + b'\r\n')
-
-@app.get("/video_feed")
-async def video_feed():
-    """Ultra-fast video streaming endpoint"""
-    if not camera_manager.is_active:
-        raise HTTPException(status_code=503, detail="Camera not available")
-    
-    return StreamingResponse(
-        generate_frames_ultra_fast(),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    )
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -754,50 +636,9 @@ async def frame_stream_endpoint(websocket: WebSocket):
                             nparr = np.frombuffer(frame_bytes, np.uint8)
                             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                             
-                            if frame is not None and camera_manager.model is not None:
-                                start_time = time.time()
-                                
-                                # Resize frame for inference (keep aspect ratio)
-                                height, width = frame.shape[:2]
-                                inference_size = 320  # Use faster inference size
-                                inference_frame = cv2.resize(frame, (inference_size, inference_size))
-                                
-                                # Run inference with dynamic confidence threshold
-                                results = camera_manager.model.infer(
-                                    inference_frame, 
-                                    confidence=current_hand_detection_confidence
-                                )
-                                
-                                # Process results - results is a list, take first item
-                                if results and len(results) > 0:
-                                    result = results[0]
-                                    predictions = getattr(result, 'predictions', [])
-                                    
-                                    # Find best detection
-                                    if predictions:
-                                        best_detection = max(predictions, key=lambda x: x.confidence)
-                                        
-                                        if best_detection.confidence > current_hand_detection_confidence:
-                                            # Scale coordinates back to original frame size
-                                            scale_x = width / inference_size
-                                            scale_y = height / inference_size
-                                            
-                                            detection = {
-                                                'x': float(best_detection.x * scale_x),
-                                                'y': float(best_detection.y * scale_y),
-                                                'width': float(best_detection.width * scale_x),
-                                                'height': float(best_detection.height * scale_y),
-                                                'confidence': float(best_detection.confidence),
-                                                'class': getattr(best_detection, 'class_name', 'hand')
-                                            }
-                                            
-                                            # Store detection for background processing
-                                            camera_manager.current_detections = [detection]
-                                    
-                                    detection_time = time.time() - start_time
-                                    # Only log slow detections
-                                    if detection_time > 0.1:  # >100ms
-                                        logger.warning(f"⚠️ Slow detection: {detection_time:.3f}s")
+                            if frame is not None:
+                                # Process the frame using our simplified manager
+                                detection = camera_manager.process_frame(frame, current_hand_detection_confidence)
                                 
                         except Exception as e:
                             logger.error(f"Frame processing error: {e}")
@@ -832,16 +673,6 @@ async def frame_stream_endpoint(websocket: WebSocket):
         logger.info("Frame streaming WebSocket disconnected")
     except Exception as e:
         logger.error(f"Frame streaming WebSocket error: {e}")
-
-@app.get("/debug/templates")
-async def debug_templates():
-    """Debug endpoint - templates are now processed stateless"""
-    return {
-        "message": "Backend now operates stateless - no templates stored",
-        "architecture": "client-side storage + on-demand recognition",
-        "stored_templates": 0,
-        "recognizer_status": "temporary recognizers created per request"
-    }
 
 if __name__ == "__main__":
     import uvicorn
