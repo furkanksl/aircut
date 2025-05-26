@@ -15,7 +15,7 @@ trap cleanup EXIT
 echo "🐍 Starting Python Backend..."
 cd backend
 source venv/bin/activate
-python main.py &
+python3.11 main.py &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
