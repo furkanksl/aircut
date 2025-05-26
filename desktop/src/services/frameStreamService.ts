@@ -17,6 +17,8 @@ export class FrameStreamService extends EventEmitter {
   private isConnected = false;
   private frameInterval: number | null = null;
   private wsConnection: WebSocket | null = null;
+  private backgroundInterval: number | null = null;
+  private isWindowVisible = true;
 
   // Configuration
   private serverUrl: string;
@@ -54,6 +56,38 @@ export class FrameStreamService extends EventEmitter {
       imageSmoothingEnabled: true, // Enable smoothing for better quality
       imageSmoothingQuality: "high", // Use high quality smoothing
     }) as CanvasRenderingContext2D | null;
+
+    // Listen for visibility changes
+    this.setupVisibilityHandling();
+  }
+
+  /**
+   * Setup handling for window visibility changes
+   */
+  private setupVisibilityHandling(): void {
+    const handleVisibilityChange = () => {
+      this.isWindowVisible = !document.hidden;
+      console.log(
+        `📹 Camera stream visibility: ${
+          this.isWindowVisible ? "visible" : "hidden"
+        }`
+      );
+
+      if (this.isStreaming) {
+        if (this.isWindowVisible) {
+          // Switch back to requestAnimationFrame
+          this.stopBackgroundCapture();
+          this.startAnimationFrameCapture();
+        } else {
+          // Switch to interval-based capture for background
+          this.stopAnimationFrameCapture();
+          this.startBackgroundCapture();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    this.isWindowVisible = !document.hidden;
   }
 
   /**
@@ -118,6 +152,9 @@ export class FrameStreamService extends EventEmitter {
       clearInterval(this.frameInterval);
       this.frameInterval = null;
     }
+
+    // Stop background capture
+    this.stopBackgroundCapture();
 
     // Close WebSocket connection
     if (this.wsConnection) {
@@ -261,9 +298,21 @@ export class FrameStreamService extends EventEmitter {
 
     this.isStreaming = true;
 
+    // Choose capture method based on window visibility
+    if (this.isWindowVisible) {
+      this.startAnimationFrameCapture();
+    } else {
+      this.startBackgroundCapture();
+    }
+  }
+
+  /**
+   * Start frame capture using requestAnimationFrame (for visible window)
+   */
+  private startAnimationFrameCapture(): void {
     // Use requestAnimationFrame for smooth frame capture
     const captureFrame = () => {
-      if (!this.isStreaming || !this.isConnected) {
+      if (!this.isStreaming || !this.isConnected || !this.isWindowVisible) {
         return;
       }
 
@@ -293,6 +342,60 @@ export class FrameStreamService extends EventEmitter {
     };
 
     requestAnimationFrame(captureFrame);
+  }
+
+  /**
+   * Start frame capture using setInterval (for background operation)
+   */
+  private startBackgroundCapture(): void {
+    if (this.backgroundInterval) {
+      clearInterval(this.backgroundInterval);
+    }
+
+    console.log("📹 Starting background frame capture");
+
+    this.backgroundInterval = window.setInterval(() => {
+      if (!this.isStreaming || !this.isConnected || this.isWindowVisible) {
+        return;
+      }
+
+      const now = performance.now();
+      const frameInterval = 1000 / this.frameRate;
+
+      if (now - this.lastFrameTime < frameInterval) {
+        return;
+      }
+
+      this.frameSkipCount++;
+
+      if (
+        this.frameSkipCount >= this.frameProcessEveryN &&
+        !this.isProcessingFrame
+      ) {
+        this.frameSkipCount = 0;
+        this.lastFrameTime = now;
+        this.captureAndSendFrame();
+      }
+    }, 1000 / this.frameRate);
+  }
+
+  /**
+   * Stop requestAnimationFrame capture
+   */
+  private stopAnimationFrameCapture(): void {
+    // The requestAnimationFrame loop stops itself when conditions aren't met
+    console.log("📹 Stopping animation frame capture");
+  }
+
+  /**
+   * Stop background interval capture
+   */
+  private stopBackgroundCapture(): void {
+    if (this.backgroundInterval) {
+      clearInterval(this.backgroundInterval);
+      this.backgroundInterval = null;
+      console.log("📹 Stopping background capture");
+    }
   }
 
   /**
@@ -394,7 +497,7 @@ export class FrameStreamService extends EventEmitter {
             if (this.backendTimeoutId) {
               clearTimeout(this.backendTimeoutId);
             }
-            this.backendTimeoutId = setTimeout(() => {
+            this.backendTimeoutId = window.setTimeout(() => {
               console.log("Backend processing timeout - resetting state");
               this.backendProcessing = false;
             }, 1000); // 1 second timeout
