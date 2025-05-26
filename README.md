@@ -48,8 +48,8 @@ AirCut follows a modern client-server architecture designed for performance and 
 │  └── Real-time UI Updates                                  │
 ├─────────────────────────────────────────────────────────────┤
 │  Backend Communication                                      │
-│  ├── WebSocket Frame Streaming (/ws/frames)                │
-│  ├── WebSocket Recognition Service (/ws)                   │
+│  ├── WebSocket Camera Stream (/ws/frames)                   │
+│  ├── WebSocket Gesture Recognition (/ws/gestures)           │
 │  └── REST API Health Checks                                │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -87,11 +87,11 @@ AirCut follows a modern client-server architecture designed for performance and 
 ### 🔄 Data Flow
 
 1. **Video Capture**: Frontend captures webcam frames at 30 FPS
-2. **Frame Streaming**: Compressed frames sent to backend via WebSocket
+2. **Camera Stream**: Compressed frames sent to backend via Camera Stream WebSocket (/ws/frames)
 3. **ML Inference**: Backend processes frames using Roboflow API (25 FPS)
-4. **Detection Results**: Hand coordinates sent back to frontend
+4. **Detection Results**: Hand coordinates sent back to frontend via Camera Stream WebSocket
 5. **Gesture Recording**: Frontend tracks hand movements when drawing
-6. **Recognition**: Recorded trajectories compared against stored templates
+6. **Recognition**: Recorded trajectories compared against stored templates via Gesture WebSocket (/ws/gestures)
 7. **Command Execution**: Matched gestures trigger associated commands
 
 ## 🛠️ Technology Stack
@@ -399,9 +399,9 @@ confidenceDisplay: boolean; // Show confidence scores
 
 ### WebSocket Endpoints
 
-#### `/ws/frames` - Frame Streaming
+#### `/ws/frames` - Camera Stream
 
-**Purpose**: Real-time frame processing and hand detection
+**Purpose**: Real-time camera frame processing and hand detection
 
 **Client → Server Messages**:
 
@@ -436,13 +436,13 @@ confidenceDisplay: boolean; // Show confidence scores
 
 {
   "type": "connection_established",
-  "message": "Frame streaming ready",
+  "message": "Camera stream ready",
   "current_hand_confidence": 0.5,
   "current_gesture_confidence": 0.6
 }
 ```
 
-#### `/ws` - Gesture Recognition
+#### `/ws/gestures` - Gesture Recognition
 
 **Purpose**: Template management and gesture recognition
 
@@ -638,9 +638,10 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 **Solutions**:
 
 1. Verify backend server is running on port 8000
-2. Check firewall settings
-3. Ensure no other service is using port 8000
-4. Restart backend server
+2. Check that both WebSocket endpoints (/ws/frames and /ws/gestures) are available
+3. Check firewall settings
+4. Ensure no other service is using port 8000
+5. Restart backend server
 
 #### 🔴 No Hand Detection
 
@@ -648,21 +649,23 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 **Solutions**:
 
 1. Verify Roboflow API key is correct
-2. Check internet connection for API calls
-3. Improve lighting conditions
-4. Lower hand detection confidence threshold
-5. Ensure hand is clearly visible to camera
+2. Check that the Camera Stream WebSocket (/ws/frames) is connected
+3. Check internet connection for API calls
+4. Improve lighting conditions
+5. Lower hand detection confidence threshold
+6. Ensure hand is clearly visible to camera
 
 #### 🔴 Poor Recognition Accuracy
 
 **Symptoms**: Gestures not recognized or wrong matches
 **Solutions**:
 
-1. Record more distinct gesture templates
-2. Adjust gesture recognition confidence
-3. Ensure consistent gesture recording
-4. Avoid overly similar gesture shapes
-5. Re-record templates with better technique
+1. Verify that the Gesture WebSocket (/ws/gestures) is connected
+2. Record more distinct gesture templates
+3. Adjust gesture recognition confidence
+4. Ensure consistent gesture recording
+5. Avoid overly similar gesture shapes
+6. Re-record templates with better technique
 
 #### 🔴 Performance Issues
 
