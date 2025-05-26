@@ -99,6 +99,7 @@ function AppContent() {
 
   // Initialize app
   useEffect(() => {
+    updateTrayIcon("disconnected");
     connectWebSockets();
     loadTemplatesFromStorage();
 
@@ -236,17 +237,20 @@ function AppContent() {
       frameSocket.onopen = () => {
         setIsConnected(true);
         setConnectionError(null);
+        updateTrayIcon("ready");
         toast.success("Connected to AirCut backend");
       };
 
       frameSocket.onclose = () => {
         setIsConnected(false);
         setFingerDetection(null);
+        updateTrayIcon("disconnected");
       };
 
       frameSocket.onerror = (error) => {
         setConnectionError("Failed to connect to the frame streaming server");
         setIsConnected(false);
+        updateTrayIcon("disconnected");
       };
 
       frameSocket.onmessage = (event) => {
@@ -333,6 +337,7 @@ function AppContent() {
           // Dismiss loading toast first
           dismissLoadingToastWithTimeout();
 
+          updateTrayIcon("recognized");
           setLastGestureResult({
             name: message.template_name,
             command: message.command,
@@ -352,6 +357,11 @@ function AppContent() {
           if (message.command && message.command.trim() !== "") {
             executeCommand(message.command);
           }
+
+          // Reset to ready state after a delay
+          setTimeout(() => {
+            updateTrayIcon("ready");
+          }, 5000);
           break;
 
         case "gesture_not_recognized":
@@ -360,6 +370,7 @@ function AppContent() {
           // Dismiss loading toast first
           dismissLoadingToastWithTimeout();
 
+          updateTrayIcon("not_recognized");
           setLastGestureResult(null);
           toast.error(
             `🤔 Gesture not recognized\nSimilarity too low for any template`,
@@ -367,6 +378,11 @@ function AppContent() {
               duration: 3000,
             }
           );
+
+          // Reset to ready state after a delay
+          setTimeout(() => {
+            updateTrayIcon("ready");
+          }, 3000);
           break;
 
         case "error":
@@ -393,11 +409,13 @@ function AppContent() {
     );
     clearTrajectory();
     setIsDrawing(true);
+    updateTrayIcon("drawing");
     toast.success("Drawing started! Move your hand to record a gesture.");
   };
 
   const handleStopDrawing = () => {
     setIsDrawing(false);
+    updateTrayIcon("ready");
     if (trajectory.length >= 2) {
       recognizeGesture(trajectory);
     } else {
@@ -455,6 +473,7 @@ function AppContent() {
         templates.length,
         "templates"
       );
+      updateTrayIcon("recognizing");
       legacySocketRef.current.send(JSON.stringify(recognitionMessage));
 
       // Store the loading toast ID so we can dismiss it later
@@ -597,6 +616,23 @@ function AppContent() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editingTemplate]);
+
+  // Tray icon management
+  const updateTrayIcon = async (
+    state:
+      | "ready"
+      | "drawing"
+      | "recognizing"
+      | "recognized"
+      | "disconnected"
+      | "not_recognized"
+  ) => {
+    try {
+      await invoke("update_tray_icon", { state });
+    } catch (error) {
+      console.error("Failed to update tray icon:", error);
+    }
+  };
 
   return (
     <div

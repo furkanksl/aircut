@@ -12,11 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "aircut",
+        "title": "AirCut",
         "width": 1400,
         "height": 1000,
         "minWidth": 1400,
-        "minHeight": 1000
+        "minHeight": 1000,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
