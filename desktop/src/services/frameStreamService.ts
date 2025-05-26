@@ -191,7 +191,7 @@ export class FrameStreamService extends EventEmitter {
         this.wsConnection = new WebSocket(wsUrl);
 
         this.wsConnection.onopen = () => {
-          console.log("Frame streaming WebSocket connected");
+          console.log("Camera stream WebSocket connected");
           this.isConnected = true;
           this.startFrameCapture();
           this.emit("connection-status", "connected");
@@ -276,7 +276,7 @@ export class FrameStreamService extends EventEmitter {
         };
 
         this.wsConnection.onclose = () => {
-          console.log("Frame streaming WebSocket disconnected");
+          console.log("Camera stream WebSocket disconnected");
           this.isConnected = false;
           this.isStreaming = false;
           this.emit("connection-status", "disconnected");

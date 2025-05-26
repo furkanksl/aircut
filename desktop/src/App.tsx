@@ -85,8 +85,10 @@ function AppContent() {
   } | null>(null);
 
   // WebSocket refs
-  const frameSocketRef = useRef<WebSocket | null>(null);
-  const legacySocketRef = useRef<WebSocket | null>(null);
+  // cameraStreamSocketRef: Handles video frame streaming and hand detection
+  const cameraStreamSocketRef = useRef<WebSocket | null>(null);
+  // gestureSocketRef: Handles gesture recognition, template management, and command execution
+  const gestureSocketRef = useRef<WebSocket | null>(null);
   const autoStartTimerRef = useRef<NodeJS.Timeout | null>(null);
   const loadingToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -110,8 +112,8 @@ function AppContent() {
     loadTemplatesFromStorage();
 
     return () => {
-      if (frameSocketRef.current) frameSocketRef.current.close();
-      if (legacySocketRef.current) legacySocketRef.current.close();
+      if (cameraStreamSocketRef.current) cameraStreamSocketRef.current.close();
+      if (gestureSocketRef.current) gestureSocketRef.current.close();
       if (autoStartTimerRef.current) clearTimeout(autoStartTimerRef.current);
       if (loadingToastTimeoutRef.current)
         clearTimeout(loadingToastTimeoutRef.current);
@@ -231,44 +233,46 @@ function AppContent() {
 
   const connectWebSockets = () => {
     try {
-      if (frameSocketRef.current) frameSocketRef.current.close();
-      if (legacySocketRef.current) legacySocketRef.current.close();
+      if (cameraStreamSocketRef.current) cameraStreamSocketRef.current.close();
+      if (gestureSocketRef.current) gestureSocketRef.current.close();
 
-      const frameSocket = new WebSocket("ws://127.0.0.1:8000/ws/frames");
-      frameSocketRef.current = frameSocket;
+      // Connect to the camera stream endpoint for frame processing and hand detection
+      const cameraStreamSocket = new WebSocket("ws://127.0.0.1:8000/ws/frames");
+      cameraStreamSocketRef.current = cameraStreamSocket;
 
-      const legacySocket = new WebSocket("ws://127.0.0.1:8000/ws");
-      legacySocketRef.current = legacySocket;
+      // Connect to the gesture recognition endpoint for template matching and commands
+      const gestureSocket = new WebSocket("ws://127.0.0.1:8000/ws/gestures");
+      gestureSocketRef.current = gestureSocket;
 
-      frameSocket.onopen = () => {
+      cameraStreamSocket.onopen = () => {
         setIsConnected(true);
         setConnectionError(null);
         updateTrayIcon("ready");
         toast.success("Connected to AirCut backend");
       };
 
-      frameSocket.onclose = () => {
+      cameraStreamSocket.onclose = () => {
         setIsConnected(false);
         setFingerDetection(null);
         updateTrayIcon("disconnected");
       };
 
-      frameSocket.onerror = (error) => {
-        setConnectionError("Failed to connect to the frame streaming server");
+      cameraStreamSocket.onerror = (error) => {
+        setConnectionError("Failed to connect to the camera stream server");
         setIsConnected(false);
         updateTrayIcon("disconnected");
       };
 
-      frameSocket.onmessage = (event) => {
-        handleFrameWebSocketMessage(event.data);
+      cameraStreamSocket.onmessage = (event) => {
+        handleCameraStreamMessage(event.data);
       };
 
-      legacySocket.onopen = () => {
-        console.log("Legacy WebSocket connection established");
+      gestureSocket.onopen = () => {
+        console.log("Gesture WebSocket connection established");
       };
 
-      legacySocket.onmessage = (event) => {
-        handleLegacyWebSocketMessage(event.data);
+      gestureSocket.onmessage = (event) => {
+        handleGestureSocketMessage(event.data);
       };
     } catch (error) {
       setConnectionError(`Connection error: ${error}`);
@@ -276,7 +280,7 @@ function AppContent() {
     }
   };
 
-  const handleFrameWebSocketMessage = (data: string) => {
+  const handleCameraStreamMessage = (data: string) => {
     try {
       const message = JSON.parse(data);
 
@@ -313,7 +317,7 @@ function AppContent() {
           break;
 
         case "connection_established":
-          console.log("✅ Frame streaming connection established");
+          console.log("✅ Camera stream connection established");
           if (message.current_hand_confidence !== undefined) {
             setHandDetectionConfidence(message.current_hand_confidence);
           }
@@ -327,14 +331,14 @@ function AppContent() {
           break;
       }
     } catch (error) {
-      console.error("Error parsing frame WebSocket message:", error);
+      console.error("Error parsing camera stream message:", error);
     }
   };
 
-  const handleLegacyWebSocketMessage = (data: string) => {
+  const handleGestureSocketMessage = (data: string) => {
     try {
       const message = JSON.parse(data);
-      console.log("📨 Received legacy WebSocket message:", message.type);
+      console.log("📨 Received gesture WebSocket message:", message.type);
 
       switch (message.type) {
         case "gesture_recognized":
@@ -392,7 +396,7 @@ function AppContent() {
           break;
 
         case "error":
-          console.error("❌ Legacy WebSocket error:", message.message);
+          console.error("❌ Gesture WebSocket error:", message.message);
 
           // Dismiss loading toast if there was one
           dismissLoadingToastWithTimeout();
@@ -405,7 +409,7 @@ function AppContent() {
           break;
       }
     } catch (error) {
-      console.error("Error parsing legacy WebSocket message:", error);
+      console.error("Error parsing gesture WebSocket message:", error);
     }
   };
 
@@ -443,8 +447,8 @@ function AppContent() {
       console.log("📚 Available templates:", templates.length);
 
       if (
-        !legacySocketRef.current ||
-        legacySocketRef.current.readyState !== WebSocket.OPEN
+        !gestureSocketRef.current ||
+        gestureSocketRef.current.readyState !== WebSocket.OPEN
       ) {
         toast.error(
           "WebSocket not connected. Please check backend connection."
@@ -480,7 +484,7 @@ function AppContent() {
         "templates"
       );
       updateTrayIcon("recognizing");
-      legacySocketRef.current.send(JSON.stringify(recognitionMessage));
+      gestureSocketRef.current.send(JSON.stringify(recognitionMessage));
 
       // Store the loading toast ID so we can dismiss it later
       const toastId = toast.loading("Recognizing gesture...");
@@ -522,8 +526,8 @@ function AppContent() {
 
   const sendConfidenceUpdate = () => {
     if (
-      frameSocketRef.current &&
-      frameSocketRef.current.readyState === WebSocket.OPEN
+      cameraStreamSocketRef.current &&
+      cameraStreamSocketRef.current.readyState === WebSocket.OPEN
     ) {
       const updateMessage = {
         type: "update_confidence",
@@ -531,7 +535,7 @@ function AppContent() {
         gesture_recognition_confidence: gestureConfidence,
       };
 
-      frameSocketRef.current.send(JSON.stringify(updateMessage));
+      cameraStreamSocketRef.current.send(JSON.stringify(updateMessage));
     }
   };
 
@@ -690,38 +694,38 @@ function AppContent() {
 
     keepAliveIntervalRef.current = setInterval(
       () => {
-        // Send ping to frame socket
+        // Send ping to camera stream socket
         if (
-          frameSocketRef.current &&
-          frameSocketRef.current.readyState === WebSocket.OPEN
+          cameraStreamSocketRef.current &&
+          cameraStreamSocketRef.current.readyState === WebSocket.OPEN
         ) {
-          frameSocketRef.current.send(
+          cameraStreamSocketRef.current.send(
             JSON.stringify({ type: "ping", timestamp: Date.now() })
           );
         } else if (
-          frameSocketRef.current &&
-          frameSocketRef.current.readyState !== WebSocket.CONNECTING
+          cameraStreamSocketRef.current &&
+          cameraStreamSocketRef.current.readyState !== WebSocket.CONNECTING
         ) {
           console.log(
-            "🔄 Frame socket disconnected during keepalive - reconnecting"
+            "🔄 Camera stream socket disconnected during keepalive - reconnecting"
           );
           connectWebSockets();
         }
 
-        // Send ping to legacy socket
+        // Send ping to gesture socket
         if (
-          legacySocketRef.current &&
-          legacySocketRef.current.readyState === WebSocket.OPEN
+          gestureSocketRef.current &&
+          gestureSocketRef.current.readyState === WebSocket.OPEN
         ) {
-          legacySocketRef.current.send(
+          gestureSocketRef.current.send(
             JSON.stringify({ type: "ping", timestamp: Date.now() })
           );
         } else if (
-          legacySocketRef.current &&
-          legacySocketRef.current.readyState !== WebSocket.CONNECTING
+          gestureSocketRef.current &&
+          gestureSocketRef.current.readyState !== WebSocket.CONNECTING
         ) {
           console.log(
-            "🔄 Legacy socket disconnected during keepalive - reconnecting"
+            "🔄 Gesture socket disconnected during keepalive - reconnecting"
           );
           connectWebSockets();
         }
@@ -734,10 +738,10 @@ function AppContent() {
         // This ensures the backend keeps processing frames even when the app is hidden
         if (
           !isWindowVisible &&
-          frameSocketRef.current &&
-          frameSocketRef.current.readyState === WebSocket.OPEN
+          cameraStreamSocketRef.current &&
+          cameraStreamSocketRef.current.readyState === WebSocket.OPEN
         ) {
-          frameSocketRef.current.send(
+          cameraStreamSocketRef.current.send(
             JSON.stringify({
               type: "refresh_detection",
               force_process: true,
