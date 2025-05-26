@@ -48,8 +48,8 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.2"))  # Lowere
 
 # Global variables for camera management and detection confidence
 camera_manager = None
-current_hand_detection_confidence = 0.5
-current_gesture_recognition_confidence = 0.6
+current_hand_detection_confidence = 0.75
+current_gesture_recognition_confidence = 0.85
 
 class SimpleGestureRecognizer:
     def __init__(self):
