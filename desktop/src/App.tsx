@@ -25,10 +25,6 @@ import {
   Settings,
   Terminal,
   Edit,
-  OctagonAlert,
-  Info,
-  AlertTriangle,
-  Loader2,
 } from "lucide-react";
 
 function AppContent() {
@@ -65,7 +61,7 @@ function AppContent() {
     setHandDetectionConfidence,
     setGestureConfidence,
     setAutoStartDelay,
-    setAutoRecognitionDelay,
+    // setAutoRecognitionDelay,
     toggleTheme,
     setShowSavePanel,
     setLoadingToastId,
@@ -261,7 +257,7 @@ function AppContent() {
         updateTrayIcon("disconnected");
       };
 
-      cameraStreamSocket.onerror = (error) => {
+      cameraStreamSocket.onerror = (_) => {
         setConnectionError("Failed to connect to the camera stream server");
         setIsConnected(false);
         updateTrayIcon("disconnected");
