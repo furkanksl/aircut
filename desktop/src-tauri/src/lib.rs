@@ -734,21 +734,17 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 make_window_visible_on_all_workspaces(&window);
                 
-                // Show the window briefly to ensure initialization
+                // Show the window and ensure it's properly sized and positioned
+                let _ = window.set_size(tauri::LogicalSize::new(1400, 1000));
+                let _ = window.center();
                 let _ = window.show();
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = window.set_focus();
                 
                 // Initialize the app
                 let app_handle = app.handle();
                 if let Some(main_window) = app_handle.get_webview_window("main") {
                     let _ = main_window.eval("window.dispatchEvent(new Event('initialize-app'))");
                 }
-                
-                // Move window off-screen to keep it running but visually hidden
-                println!("📱 Moving window off-screen after initialization");
-                let _ = window.set_position(tauri::LogicalPosition::new(-2000, -2000));
-                let _ = window.set_size(tauri::LogicalSize::new(1, 1));
-                let _ = window.show(); // Keep it "visible" but off-screen
                 
                 // Set up a handler for window close events
                 let app_handle = app.handle().clone();
