@@ -25,6 +25,10 @@ import {
   Settings,
   Terminal,
   Edit,
+  OctagonAlert,
+  Info,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 function AppContent() {
@@ -1599,11 +1603,29 @@ export default function App() {
         position="top-right"
         toastOptions={{
           duration: 4000,
+          className: "group",
           style: {
-            background: "rgba(0, 0, 0, 0.8)",
-            color: "white",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-            backdropFilter: "blur(16px)",
+            borderRadius: "12px",
+            overflow: "hidden",
+          },
+          classNames: {
+            toast:
+              "group rounded-2xl overflow-hidden backdrop-blur-xl border shadow-lg flex gap-2.5 pl-3 pr-6 py-3",
+            success:
+              "bg-white/80 dark:bg-slate-800/80 border-gray-200/50 dark:border-slate-700/50 text-gray-900 dark:text-white",
+            error:
+              "bg-white/80 dark:bg-slate-800/80 border-gray-200/50 dark:border-slate-700/50 text-gray-900 dark:text-white",
+            info: "bg-white/80 dark:bg-slate-800/80 border-gray-200/50 dark:border-slate-700/50 text-gray-900 dark:text-white",
+            warning:
+              "bg-white/80 dark:bg-slate-800/80 border-gray-200/50 dark:border-slate-700/50 text-gray-900 dark:text-white",
+            loading:
+              "bg-white/80 dark:bg-slate-800/80 border-gray-200/50 dark:border-slate-700/50 text-gray-900 dark:text-white",
+            title: "font-medium text-sm",
+            description: "text-gray-600 dark:text-white/80 text-xs",
+            actionButton: "bg-primary text-primary-foreground",
+            cancelButton: "bg-muted text-muted-foreground",
+            closeButton:
+              "absolute top-2 right-2 p-0 rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-gray-200/50 dark:bg-white/10 hover:bg-gray-300/50 dark:hover:bg-white/20 text-gray-600 dark:text-white/70",
           },
         }}
       />
